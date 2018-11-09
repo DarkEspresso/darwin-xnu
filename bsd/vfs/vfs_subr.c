@@ -1027,6 +1027,7 @@ vfs_rootmountalloc(const char *fstypename, const char *devname, mount_t *mpp)
 	return (ENOMEM);
 }
 
+#define DBG_MOUNTROOT (FSDBG_CODE(DBG_MOUNT, 0))
 
 /*
  * Find an appropriate filesystem to use for the root. If a filesystem
@@ -1049,15 +1050,20 @@ vfs_mountroot(void)
 	mount_t mp;
 	vnode_t	bdevvp_rootvp;
 
+	KDBG_RELEASE(DBG_MOUNTROOT | DBG_FUNC_START);
 	if (mountroot != NULL) {
 		/*
 		 * used for netboot which follows a different set of rules
 		 */
 		error = (*mountroot)();
+
+		KDBG_RELEASE(DBG_MOUNTROOT | DBG_FUNC_END, error, 0);
 		return (error);
 	}
 	if ((error = bdevvp(rootdev, &rootvp))) {
 		printf("vfs_mountroot: can't setup bdevvp\n");
+
+		KDBG_RELEASE(DBG_MOUNTROOT | DBG_FUNC_END, error, 1);
 		return (error);
 	}
 	/*
@@ -1170,8 +1176,10 @@ vfs_mountroot(void)
 			vnode_put(rootvp);
 
 #if CONFIG_MACF
-			if ((vfs_flags(mp) & MNT_MULTILABEL) == 0)
+			if ((vfs_flags(mp) & MNT_MULTILABEL) == 0) {
+				KDBG_RELEASE(DBG_MOUNTROOT | DBG_FUNC_END, 0, 2);
 				return (0);
+			}
 
 			error = VFS_ROOT(mp, &vp, ctx);
 			if (error) {
@@ -1193,16 +1201,18 @@ vfs_mountroot(void)
 				goto fail;
 			}
 #endif
+			KDBG_RELEASE(DBG_MOUNTROOT | DBG_FUNC_END, 0, 3);
 			return (0);
 		}
 #if CONFIG_MACF
 fail:
 #endif
 		vfs_rootmountfailed(mp);
-		
+
 		if (error != EINVAL)
 			printf("%s_mountroot failed: %d\n", vfsp->vfc_name, error);
 	}
+	KDBG_RELEASE(DBG_MOUNTROOT | DBG_FUNC_END, error ? error : ENODEV, 4);
 	return (ENODEV);
 }
 
@@ -3492,7 +3502,7 @@ again:
 	if (space < req->oldlen)
 		return (ENOMEM);
 
-	MALLOC(fsidlst, fsid_t *, req->oldlen, M_TEMP, M_WAITOK);
+	MALLOC(fsidlst, fsid_t *, req->oldlen, M_TEMP, M_WAITOK | M_ZERO);
 	if (fsidlst == NULL) {
 		return (ENOMEM);
 	}
@@ -3861,7 +3871,7 @@ sysctl_vfs_generic_conf SYSCTL_HANDLER_ARGS
 {
 	int *name, namelen;
 	struct vfstable *vfsp;
-	struct vfsconf vfsc;
+	struct vfsconf vfsc = {};
 	
 	(void)oidp;
 	name = arg1;
@@ -8782,7 +8792,6 @@ vfs_setcompoundopen(mount_t mp)
 	mount_unlock(mp);
 }
 
-
 void
 vnode_setswapmount(vnode_t vp)
 {
@@ -9502,6 +9511,12 @@ vnode_trigger_resolve(vnode_t vp, struct nameidata *ndp, vfs_context_t ctx)
 	}
 
 	lck_mtx_unlock(&rp->vr_lock);
+
+#if CONFIG_MACF
+	int rv = mac_vnode_check_trigger_resolve(ctx, vp, &ndp->ni_cnd);
+	if (rv != 0)
+		return rv;
+#endif
 
 	/*
 	 * XXX

@@ -72,6 +72,7 @@
 #include <mach/machine/vm_types.h>
 #include <mach_debug/zone_info.h>
 #include <mach/vm_map.h>
+#include <mach/sdt.h>
 
 #include <kern/bits.h>
 #include <kern/kern_types.h>
@@ -86,6 +87,8 @@
 #include <kern/thread_call.h>
 #include <kern/zalloc.h>
 #include <kern/kalloc.h>
+
+#include <prng/random.h>
 
 #include <vm/pmap.h>
 #include <vm/vm_map.h>
@@ -215,6 +218,8 @@ uintptr_t       zp_nopoison_cookie      = 0;
 boolean_t       zone_tagging_on;
 #endif /* VM_MAX_TAG_ZONES */
 
+static struct bool_gen zone_bool_gen;
+
 /*
  * initialize zone poisoning
  * called from zone_bootstrap before any allocations are made from zalloc
@@ -342,10 +347,6 @@ vm_offset_t     zone_map_max_address = 0;
 
 /* Globals for random boolean generator for elements in free list */
 #define MAX_ENTROPY_PER_ZCRAM 		4
-#define RANDOM_BOOL_GEN_SEED_COUNT      4
-static unsigned int bool_gen_seed[RANDOM_BOOL_GEN_SEED_COUNT];
-static unsigned int bool_gen_global = 0;
-decl_simple_lock_data(, bool_gen_lock)
 
 /* VM region for all metadata structures */
 vm_offset_t 	zone_metadata_region_min = 0;
@@ -368,7 +369,7 @@ decl_simple_lock_data(, all_zones_lock)
 unsigned int            num_zones_in_use;
 unsigned int            num_zones;
 
-#define MAX_ZONES       288
+#define MAX_ZONES       320
 struct zone             zone_array[MAX_ZONES];
 
 /* Used to keep track of empty slots in the zone_array */
@@ -445,6 +446,7 @@ struct zone_page_metadata {
 /* Magic value to indicate empty element free list */
 #define PAGE_METADATA_EMPTY_FREELIST 		((uint32_t)(~0))
 
+boolean_t get_zone_info(zone_t z, mach_zone_name_t *zn, mach_zone_info_t *zi);
 boolean_t is_zone_map_nearing_exhaustion(void);
 extern void vm_pageout_garbage_collect(int collect);
 
@@ -2543,61 +2545,18 @@ zcram_metadata_init(vm_offset_t newmem, vm_size_t size, struct zone_page_metadat
 	return;
 }
 
-
-/*
- * Boolean Random Number Generator for generating booleans to randomize 
- * the order of elements in newly zcram()'ed memory. The algorithm is a 
- * modified version of the KISS RNG proposed in the paper:
- * http://stat.fsu.edu/techreports/M802.pdf
- * The modifications have been documented in the technical paper 
- * paper from UCL:
- * http://www0.cs.ucl.ac.uk/staff/d.jones/GoodPracticeRNG.pdf 
- */
-
-static void random_bool_gen_entropy(
-		int 	*buffer,
-		int 	count)
-{
-
-	int i, t;
-	simple_lock(&bool_gen_lock);
-	for (i = 0; i < count; i++) {
-		bool_gen_seed[1] ^= (bool_gen_seed[1] << 5);
-		bool_gen_seed[1] ^= (bool_gen_seed[1] >> 7);
-		bool_gen_seed[1] ^= (bool_gen_seed[1] << 22);
-		t = bool_gen_seed[2] + bool_gen_seed[3] + bool_gen_global;
-		bool_gen_seed[2] = bool_gen_seed[3];
-		bool_gen_global = t < 0;
-		bool_gen_seed[3] = t &2147483647;
-		bool_gen_seed[0] += 1411392427;
-		buffer[i] = (bool_gen_seed[0] + bool_gen_seed[1] + bool_gen_seed[3]);
-	}
-	simple_unlock(&bool_gen_lock);
-}
-
-static boolean_t random_bool_gen(
-		int 	*buffer,
-		int 	index,
-		int 	bufsize)
-{
-	int valindex, bitpos;
-	valindex = (index / (8 * sizeof(int))) % bufsize;
-	bitpos = index % (8 * sizeof(int));
-	return (boolean_t)(buffer[valindex] & (1 << bitpos));
-} 
-
-static void 
+static void
 random_free_to_zone(
 			zone_t 		zone,
 			vm_offset_t 	newmem,
 			vm_offset_t 	first_element_offset,
 			int 		element_count,
-			int 		*entropy_buffer)
+			unsigned int 	*entropy_buffer)
 {
 	vm_offset_t 	last_element_offset;
 	vm_offset_t 	element_addr;
 	vm_size_t       elem_size;
-	int 		index;	
+	int 		index;
 
 	assert(element_count  <= ZONE_CHUNK_MAXELEMENTS);
 	elem_size = zone->elem_size;
@@ -2608,7 +2567,7 @@ random_free_to_zone(
 #if DEBUG || DEVELOPMENT
 		leak_scan_debug_flag || __improbable(zone->tags) ||
 #endif /* DEBUG || DEVELOPMENT */
-	        random_bool_gen(entropy_buffer, index, MAX_ENTROPY_PER_ZCRAM)) {
+	        random_bool_gen_bits(&zone_bool_gen, entropy_buffer, MAX_ENTROPY_PER_ZCRAM, 1)) {
 			element_addr = newmem + first_element_offset;
 			first_element_offset += elem_size;
 		} else {
@@ -2635,7 +2594,7 @@ zcram(
 	vm_size_t	elem_size;
 	boolean_t   from_zm = FALSE;
 	int element_count;
-	int entropy_buffer[MAX_ENTROPY_PER_ZCRAM];
+	unsigned int entropy_buffer[MAX_ENTROPY_PER_ZCRAM] = { 0 };
 
 	/* Basic sanity checks */
 	assert(zone != ZONE_NULL && newmem != (vm_offset_t)0);
@@ -2650,12 +2609,12 @@ zcram(
 		from_zm = TRUE;
 
 	if (!from_zm) {
-		/* We cannot support elements larger than page size for foreign memory because we 
-		 * put metadata on the page itself for each page of foreign memory. We need to do 
-		 * this in order to be able to reach the metadata when any element is freed 
+		/* We cannot support elements larger than page size for foreign memory because we
+		 * put metadata on the page itself for each page of foreign memory. We need to do
+		 * this in order to be able to reach the metadata when any element is freed
 		 */
 		assert((zone->allows_foreign == TRUE) && (zone->elem_size <= (PAGE_SIZE - sizeof(struct zone_page_metadata))));
-	} 
+	}
 
 	if (zalloc_debug & ZALLOC_DEBUG_ZCRAM)
 		kprintf("zcram(%p[%s], 0x%lx%s, 0x%lx)\n", zone, zone->zone_name,
@@ -2663,10 +2622,8 @@ zcram(
 
 	ZONE_PAGE_COUNT_INCR(zone, (size / PAGE_SIZE));
 
-	random_bool_gen_entropy(entropy_buffer, MAX_ENTROPY_PER_ZCRAM);
-	
-	/* 
-	 * Initialize the metadata for all pages. We dont need the zone lock 
+	/*
+	 * Initialize the metadata for all pages. We dont need the zone lock
 	 * here because we are not manipulating any zone related state yet.
 	 */
 
@@ -2773,7 +2730,6 @@ void
 zone_bootstrap(void)
 {
 	char temp_buf[16];
-	unsigned int i;
 
 	if (!PE_parse_boot_argn("zalloc_debug", &zalloc_debug, sizeof(zalloc_debug)))
 		zalloc_debug = 0;
@@ -2781,11 +2737,7 @@ zone_bootstrap(void)
 	/* Set up zone element poisoning */
 	zp_init();
 
-	/* Seed the random boolean generator for elements in zone free list */
-	for (i = 0; i < RANDOM_BOOL_GEN_SEED_COUNT; i++) {
-		bool_gen_seed[i] = (unsigned int)early_random();
-	}
-	simple_lock_init(&bool_gen_lock, 0);
+	random_bool_init(&zone_bool_gen);
 
 	/* should zlog log to debug zone corruption instead of leaks? */
 	if (PE_parse_boot_argn("-zc", temp_buf, sizeof(temp_buf))) {
@@ -3389,6 +3341,8 @@ zalloc_internal(
 	}
 #endif
 
+	DTRACE_VM2(zalloc, zone_t, zone, void*, addr);
+
 	return((void *)addr);
 }
 
@@ -3528,6 +3482,7 @@ zfree(
 #endif /* VM_MAX_TAG_ZONES */
 
 	assert(zone != ZONE_NULL);
+	DTRACE_VM2(zfree, zone_t, zone, void*, addr);
 
 #if KASAN_ZALLOC
 	/*
@@ -3918,6 +3873,48 @@ consider_zone_gc(boolean_t consider_jetsams)
 		zone_gc(consider_jetsams);
 }
 
+
+boolean_t
+get_zone_info(
+	zone_t				z,
+	mach_zone_name_t	*zn,
+	mach_zone_info_t	*zi)
+{
+	struct zone zcopy;
+
+	assert(z != ZONE_NULL);
+	lock_zone(z);
+	if (!z->zone_valid) {
+		unlock_zone(z);
+		return FALSE;
+	}
+	zcopy = *z;
+	unlock_zone(z);
+
+	if (zn != NULL) {
+		/* assuming here the name data is static */
+		(void) __nosan_strlcpy(zn->mzn_name, zcopy.zone_name,
+				strlen(zcopy.zone_name)+1);
+	}
+
+	if (zi != NULL) {
+		zi->mzi_count = (uint64_t)zcopy.count;
+		zi->mzi_cur_size = ptoa_64(zcopy.page_count);
+		zi->mzi_max_size = (uint64_t)zcopy.max_size;
+		zi->mzi_elem_size = (uint64_t)zcopy.elem_size;
+		zi->mzi_alloc_size = (uint64_t)zcopy.alloc_size;
+		zi->mzi_sum_size = zcopy.sum_count * zcopy.elem_size;
+		zi->mzi_exhaustible = (uint64_t)zcopy.exhaustible;
+		zi->mzi_collectable = 0;
+		if (zcopy.collectable) {
+			SET_MZI_COLLECTABLE_BYTES(zi->mzi_collectable, ((uint64_t)zcopy.count_all_free_pages * PAGE_SIZE));
+			SET_MZI_COLLECTABLE_FLAG(zi->mzi_collectable, TRUE);
+		}
+	}
+
+	return TRUE;
+}
+
 kern_return_t
 task_zone_info(
 	__unused task_t					task,
@@ -3966,7 +3963,6 @@ mach_memory_info(
         unsigned int		num_info;
 
 	unsigned int		max_zones, used_zones, i;
-	zone_t			z;
 	mach_zone_name_t	*zn;
 	mach_zone_info_t    	*zi;
 	kern_return_t		kr;
@@ -4013,40 +4009,26 @@ mach_memory_info(
 
 	used_zones = max_zones;
 	for (i = 0; i < max_zones; i++) {
-		struct zone zcopy;
-		z = &(zone_array[i]);
-		assert(z != ZONE_NULL);
-
-		lock_zone(z);
-		if (!z->zone_valid) {
-			unlock_zone(z);
+		if (!get_zone_info(&(zone_array[i]), zn, zi)) {
 			used_zones--;
 			continue;
 		}
-		zcopy = *z;
-		unlock_zone(z);
-
-		/* assuming here the name data is static */
-		(void) __nosan_strncpy(zn->mzn_name, zcopy.zone_name,
-			       sizeof zn->mzn_name);
-		zn->mzn_name[sizeof zn->mzn_name - 1] = '\0';
-
-		zi->mzi_count = (uint64_t)zcopy.count;
-		zi->mzi_cur_size = ptoa_64(zcopy.page_count);
-		zi->mzi_max_size = (uint64_t)zcopy.max_size;
-		zi->mzi_elem_size = (uint64_t)zcopy.elem_size;
-		zi->mzi_alloc_size = (uint64_t)zcopy.alloc_size;
-		zi->mzi_sum_size = zcopy.sum_count * zcopy.elem_size;
-		zi->mzi_exhaustible = (uint64_t)zcopy.exhaustible;
-		zi->mzi_collectable = (uint64_t)zcopy.collectable;
-		zones_collectable_bytes += ((uint64_t)zcopy.count_all_free_pages * PAGE_SIZE);
+		zones_collectable_bytes += GET_MZI_COLLECTABLE_BYTES(zi->mzi_collectable);
 		zn++;
 		zi++;
 	}
 
 	used = used_zones * sizeof *names;
-	if (used != names_size)
-		bzero((char *) (names_addr + used), names_size - used);
+	if (used != names_size) {
+		vm_offset_t names_addr_end = names_addr + used;
+		vm_size_t free_size = names_size - (round_page(names_addr_end) - names_addr);
+
+		if (free_size >= PAGE_SIZE) {
+			kmem_free(ipc_kernel_map,
+					round_page(names_addr_end), free_size);
+		}
+		bzero((char *) names_addr_end, round_page(names_addr_end) - names_addr_end);
+	}
 
 	kr = vm_map_copyin(ipc_kernel_map, (vm_map_address_t)names_addr,
 			   (vm_map_size_t)used, TRUE, &copy);
@@ -4056,9 +4038,16 @@ mach_memory_info(
 	*namesCntp = used_zones;
 
 	used = used_zones * sizeof *info;
+	if (used != info_size) {
+		vm_offset_t info_addr_end = info_addr + used;
+		vm_size_t free_size = info_size - (round_page(info_addr_end) - info_addr);
 
-	if (used != info_size)
-		bzero((char *) (info_addr + used), info_size - used);
+		if (free_size >= PAGE_SIZE) {
+			kmem_free(ipc_kernel_map,
+					round_page(info_addr_end), free_size);
+		}
+		bzero((char *) info_addr_end, round_page(info_addr_end) - info_addr_end);
+	}
 
 	kr = vm_map_copyin(ipc_kernel_map, (vm_map_address_t)info_addr,
 			   (vm_map_size_t)used, TRUE, &copy);
@@ -4078,10 +4067,6 @@ mach_memory_info(
 		kr = kmem_alloc_pageable(ipc_kernel_map,
 					 &memory_info_addr, memory_info_vmsize, VM_KERN_MEMORY_IPC);
 		if (kr != KERN_SUCCESS) {
-			kmem_free(ipc_kernel_map,
-				  names_addr, names_size);
-			kmem_free(ipc_kernel_map,
-				  info_addr, info_size);
 			return kr;
 		}
 
@@ -4106,24 +4091,91 @@ mach_memory_info(
 	return KERN_SUCCESS;
 }
 
+kern_return_t
+mach_zone_info_for_zone(
+	host_priv_t			host,
+	mach_zone_name_t	name,
+	mach_zone_info_t	*infop)
+{
+	unsigned int max_zones, i;
+	zone_t zone_ptr;
+
+	if (host == HOST_NULL)
+		return KERN_INVALID_HOST;
+#if CONFIG_DEBUGGER_FOR_ZONE_INFO
+	if (!PE_i_can_has_debugger(NULL))
+		return KERN_INVALID_HOST;
+#endif
+
+	if (infop == NULL) {
+		return KERN_INVALID_ARGUMENT;
+	}
+
+	simple_lock(&all_zones_lock);
+	max_zones = (unsigned int)(num_zones);
+	simple_unlock(&all_zones_lock);
+
+	zone_ptr = ZONE_NULL;
+	for (i = 0; i < max_zones; i++) {
+		zone_t z = &(zone_array[i]);
+		assert(z != ZONE_NULL);
+
+		/* Find the requested zone by name */
+		if (!strncmp(name.mzn_name, z->zone_name, strlen(z->zone_name))) {
+			zone_ptr = z;
+			break;
+		}
+	}
+
+	/* No zones found with the requested zone name */
+	if (zone_ptr == ZONE_NULL) {
+		return KERN_INVALID_ARGUMENT;
+	}
+
+	if (get_zone_info(zone_ptr, NULL, infop)) {
+		return KERN_SUCCESS;
+	}
+	return KERN_FAILURE;
+}
+
+kern_return_t
+mach_zone_info_for_largest_zone(
+	host_priv_t			host,
+	mach_zone_name_t	*namep,
+	mach_zone_info_t	*infop)
+{
+	if (host == HOST_NULL)
+		return KERN_INVALID_HOST;
+#if CONFIG_DEBUGGER_FOR_ZONE_INFO
+	if (!PE_i_can_has_debugger(NULL))
+		return KERN_INVALID_HOST;
+#endif
+
+	if (namep == NULL || infop == NULL) {
+		return KERN_INVALID_ARGUMENT;
+	}
+
+	if (get_zone_info(zone_find_largest(), namep, infop)) {
+		return KERN_SUCCESS;
+	}
+	return KERN_FAILURE;
+}
+
 uint64_t
 get_zones_collectable_bytes(void)
 {
-	zone_t z;
 	unsigned int i, max_zones;
 	uint64_t zones_collectable_bytes = 0;
+	mach_zone_info_t zi;
 
 	simple_lock(&all_zones_lock);
 	max_zones = (unsigned int)(num_zones);
 	simple_unlock(&all_zones_lock);
 
 	for (i = 0; i < max_zones; i++) {
-		z = &(zone_array[i]);
-		assert(z != ZONE_NULL);
-
-		lock_zone(z);
-		zones_collectable_bytes += ((uint64_t)z->count_all_free_pages * PAGE_SIZE);
-		unlock_zone(z);
+		if (get_zone_info(&(zone_array[i]), NULL, &zi)) {
+			zones_collectable_bytes += GET_MZI_COLLECTABLE_BYTES(zi.mzi_collectable);
+		}
 	}
 
 	return zones_collectable_bytes;

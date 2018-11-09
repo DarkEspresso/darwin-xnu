@@ -5128,6 +5128,15 @@ sosetoptlock(struct socket *so, struct sockopt *sopt, int dolock)
 				so->so_flags |= SOF_PRIVILEGED_TRAFFIC_CLASS;
 			break;
 
+#if (DEVELOPMENT || DEBUG)
+		case SO_DEFUNCTIT:
+			error = sosetdefunct(current_proc(), so, 0, FALSE);
+			if (error == 0)
+				error = sodefunct(current_proc(), so, 0);
+
+			break;
+#endif /* (DEVELOPMENT || DEBUG) */
+
 		case SO_DEFUNCTOK:
 			error = sooptcopyin(sopt, &optval, sizeof (optval),
 			    sizeof (optval));
@@ -5661,7 +5670,7 @@ integer:
 			goto integer;
 
 		case SO_NP_EXTENSIONS: {
-			struct so_np_extensions sonpx;
+			struct so_np_extensions sonpx = {};
 
 			sonpx.npx_flags = (so->so_flags & SOF_NPX_SETOPTSHUT) ?
 			    SONPX_SETOPTSHUT : 0;

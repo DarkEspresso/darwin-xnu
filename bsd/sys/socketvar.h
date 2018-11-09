@@ -275,7 +275,6 @@ struct socket {
 #define	SOF_ENABLE_MSGS		0x00400000 /* TCP must enable message delivery */
 #define	SOF_FLOW_DIVERT		0x00800000 /* Flow Divert is enabled */
 #define	SOF_MP_SUBFLOW		0x01000000 /* is a multipath subflow socket */
-#define	SOF_MPTCP_TRUE		0x02000000 /* Established e2e MPTCP connection */
 #define	SOF_MP_SEC_SUBFLOW	0x04000000 /* Set up secondary flow */
 #define	SOF_MP_TRYFAILOVER	0x08000000 /* Failing subflow */
 #define	SOF_DELEGATED		0x10000000 /* on behalf of another process */
@@ -980,7 +979,8 @@ extern void mptcp_fallback_sbdrop(struct socket *so, struct mbuf *m, int len);
 extern void mptcp_preproc_sbdrop(struct socket *, struct mbuf *, unsigned int);
 extern void mptcp_postproc_sbdrop(struct mbuf *, u_int64_t, u_int32_t,
     u_int32_t);
-extern void mptcp_adj_rmap(struct socket *, struct mbuf *, int);
+extern int mptcp_adj_rmap(struct socket *so, struct mbuf *m, int off,
+			  uint64_t dsn, uint32_t rseq, uint16_t dlen);
 
 extern void netpolicy_post_msg(uint32_t, struct netpolicy_event_data *,
     uint32_t);

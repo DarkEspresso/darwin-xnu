@@ -319,7 +319,9 @@ protected:
 
 /*! @var reserved
     Reserved for future use.  (Internal use only)  */
+    APPLE_KEXT_WSHADOW_PUSH;
     ExpansionData * reserved;
+    APPLE_KEXT_WSHADOW_POP;
 
 private:
     IOService *     __provider;
@@ -1399,7 +1401,9 @@ private:
     bool terminatePhase1( IOOptionBits options = 0 );
     void scheduleTerminatePhase2( IOOptionBits options = 0 );
     void scheduleStop( IOService * provider );
-    static void terminateThread( void * arg, wait_result_t unused );
+
+    static void waitToBecomeTerminateThread( void );
+    static void __attribute__((__noreturn__)) terminateThread( void * arg, wait_result_t unused );
     static void terminateWorker( IOOptionBits options );
     static void actionWillTerminate( IOService * victim, IOOptionBits options, 
                                      OSArray * doPhase2List, void*, void * );

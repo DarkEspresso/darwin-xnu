@@ -1171,12 +1171,17 @@ key_do_allocsa_policy(
 		if (candidate->lft_c->sadb_lifetime_addtime <
 			sav->lft_c->sadb_lifetime_addtime) {
 			d = candidate;
-			if ((sav->flags & SADB_X_EXT_NATT_MULTIPLEUSERS) != 0)
+			if ((sah->saidx.mode == IPSEC_MODE_TUNNEL &&
+				 ((sav->flags & SADB_X_EXT_NATT) != 0)) ||
+				(sah->saidx.mode == IPSEC_MODE_TRANSPORT &&
+				 ((sav->flags & SADB_X_EXT_NATT_MULTIPLEUSERS) != 0))) {
 				natt_candidate = sav;
-			else
+			} else {
 				no_natt_candidate = sav;
-		} else
+			}
+		} else {
 			d = sav;
+		}
 		
 		/*
 		 * prepared to delete the SA when there is more
@@ -9920,7 +9925,7 @@ key_sa_routechange(
 	
 	lck_mtx_lock(sadb_mutex);
 	LIST_FOREACH(sah, &sahtree, chain) {
-		ro = &sah->sa_route;
+		ro = (struct route *)&sah->sa_route;
 		if (ro->ro_rt && dst->sa_len == ro->ro_dst.sa_len
 			&& bcmp(dst, &ro->ro_dst, dst->sa_len) == 0) {
 			ROUTE_RELEASE(ro);

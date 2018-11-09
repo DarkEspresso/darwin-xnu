@@ -1077,7 +1077,8 @@ extern boolean_t	thread_should_abort(
 extern int is_64signalregset(void);
 
 extern void act_set_kperf(thread_t);
-extern void set_astledger(thread_t thread);
+extern void act_set_astledger(thread_t thread);
+extern void act_set_astledger_async(thread_t thread);
 extern void act_set_io_telemetry_ast(thread_t);
 
 extern uint32_t dtrace_get_thread_predcache(thread_t);
@@ -1189,6 +1190,8 @@ extern kern_return_t	kernel_thread_start(
 #ifdef KERNEL_PRIVATE
 void thread_set_eager_preempt(thread_t thread);
 void thread_clear_eager_preempt(thread_t thread);
+void thread_set_honor_qlimit(thread_t thread);
+void thread_clear_honor_qlimit(thread_t thread);
 extern ipc_port_t convert_thread_to_port(thread_t);
 extern ipc_port_t convert_thread_inspect_to_port(thread_inspect_t);
 extern boolean_t is_vm_privileged(void);

@@ -284,29 +284,6 @@ out_error:
 	return NULL;
 }
 
-int persona_invalidate(struct persona *persona)
-{
-	int error = 0;
-	if (!persona)
-		return EINVAL;
-
-	lock_personas();
-	persona_lock(persona);
-
-	if (!persona_valid(persona))
-		panic("Double-invalidation of persona %p", persona);
-
-	LIST_REMOVE(persona, pna_list);
-	if (hw_atomic_add(&g_total_personas, -1) == UINT_MAX)
-		panic("persona ref count underflow!\n");
-	persona_mkinvalid(persona);
-
-	persona_unlock(persona);
-	unlock_personas();
-
-	return error;
-}
-
 static struct persona *persona_get_locked(struct persona *persona)
 {
 	if (persona->pna_refcount) {
@@ -353,12 +330,14 @@ void persona_put(struct persona *persona)
 
 	/* remove it from the global list and decrement the count */
 	lock_personas();
+	persona_lock(persona);
 	if (persona_valid(persona)) {
 		LIST_REMOVE(persona, pna_list);
 		if (hw_atomic_add(&g_total_personas, -1) == UINT_MAX)
 			panic("persona count underflow!\n");
 		persona_mkinvalid(persona);
 	}
+	persona_unlock(persona);
 	unlock_personas();
 
 	assert(LIST_EMPTY(&persona->pna_members));
@@ -392,6 +371,34 @@ struct persona *persona_lookup(uid_t id)
 			break;
 		}
 		persona_unlock(tmp);
+	}
+	unlock_personas();
+
+	return persona;
+}
+
+struct persona *persona_lookup_and_invalidate(uid_t id)
+{
+	struct persona *persona, *entry, *tmp;
+
+	persona = NULL;
+
+	lock_personas();
+	LIST_FOREACH_SAFE(entry, &all_personas, pna_list, tmp) {
+		persona_lock(entry);
+		if (entry->pna_id == id) {
+			if (persona_valid(entry)) {
+				persona = persona_get_locked(entry);
+				assert(persona != NULL);
+				LIST_REMOVE(persona, pna_list);
+				if (hw_atomic_add(&g_total_personas, -1) == UINT_MAX)
+					panic("persona ref count underflow!\n");
+				persona_mkinvalid(persona);
+			}
+			persona_unlock(entry);
+			break;
+		}
+		persona_unlock(entry);
 	}
 	unlock_personas();
 
@@ -998,7 +1005,7 @@ gid_t persona_get_gid(struct persona *persona)
 	return gid;
 }
 
-int persona_set_groups(struct persona *persona, gid_t *groups, int ngroups, uid_t gmuid)
+int persona_set_groups(struct persona *persona, gid_t *groups, unsigned ngroups, uid_t gmuid)
 {
 	int ret = 0;
 	kauth_cred_t my_cred, new_cred;
@@ -1020,7 +1027,7 @@ int persona_set_groups(struct persona *persona, gid_t *groups, int ngroups, uid_
 
 	my_cred = persona->pna_cred;
 	kauth_cred_ref(my_cred);
-	new_cred = kauth_cred_setgroups(my_cred, groups, ngroups, gmuid);
+	new_cred = kauth_cred_setgroups(my_cred, groups, (int)ngroups, gmuid);
 	if (new_cred != my_cred)
 		persona->pna_cred = new_cred;
 	kauth_cred_unref(&my_cred);
@@ -1030,17 +1037,19 @@ out_unlock:
 	return ret;
 }
 
-int persona_get_groups(struct persona *persona, int *ngroups, gid_t *groups, int groups_sz)
+int persona_get_groups(struct persona *persona, unsigned *ngroups, gid_t *groups, unsigned groups_sz)
 {
 	int ret = EINVAL;
-	if (!persona || !persona->pna_cred || !groups || !ngroups)
+	if (!persona || !persona->pna_cred || !groups || !ngroups || groups_sz > NGROUPS)
 		return EINVAL;
 
 	*ngroups = groups_sz;
 
 	persona_lock(persona);
 	if (persona_valid(persona)) {
-		kauth_cred_getgroups(persona->pna_cred, groups, ngroups);
+		int kauth_ngroups = (int)groups_sz;
+		kauth_cred_getgroups(persona->pna_cred, groups, &kauth_ngroups);
+		*ngroups = (unsigned)kauth_ngroups;
 		ret = 0;
 	}
 	persona_unlock(persona);

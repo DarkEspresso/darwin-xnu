@@ -322,7 +322,8 @@ void personas_bootstrap(void);
 
 struct persona *persona_alloc(uid_t id, const char *login,
 			      int type, int *error);
-int persona_invalidate(struct persona *persona);
+
+struct persona *persona_lookup_and_invalidate(uid_t id);
 
 static inline int proc_has_persona(proc_t p)
 {
@@ -354,8 +355,8 @@ uid_t persona_get_uid(struct persona *persona);
 int persona_set_gid(struct persona *persona, gid_t gid);
 gid_t persona_get_gid(struct persona *persona);
 
-int persona_set_groups(struct persona *persona, gid_t *groups, int ngroups, uid_t gmuid);
-int persona_get_groups(struct persona *persona, int *ngroups, gid_t *groups, int groups_sz);
+int persona_set_groups(struct persona *persona, gid_t *groups, unsigned ngroups, uid_t gmuid);
+int persona_get_groups(struct persona *persona, unsigned *ngroups, gid_t *groups, unsigned groups_sz);
 
 uid_t persona_get_gmuid(struct persona *persona);
 

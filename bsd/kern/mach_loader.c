@@ -65,6 +65,7 @@
 #include <machine/exec.h>
 #include <machine/pal_routines.h>
 
+#include <kern/ast.h>
 #include <kern/kern_types.h>
 #include <kern/cpu_number.h>
 #include <kern/mach_loader.h>
@@ -82,10 +83,14 @@
 #include <vm/vm_kern.h>
 #include <vm/vm_pager.h>
 #include <vm/vnode_pager.h>
-#include <vm/vm_protos.h> 
+#include <vm/vm_protos.h>
 #include <IOKit/IOReturn.h>	/* for kIOReturnNotPrivileged */
 
 #include <os/overflow.h>
+
+#if __x86_64__
+extern int bootarg_no32exec;    /* bsd_init.c */
+#endif
 
 /*
  * XXX vm/pmap.h should not treat these prototypes as MACH_KERNEL_PRIVATE
@@ -520,6 +525,19 @@ load_machfile(
 		task_rollup_accounting_info(get_threadtask(thread), task);
 	}
 	*mapp = map;
+
+#ifdef CONFIG_32BIT_TELEMETRY
+	if (!result->is64bit) {
+		/*
+		 * This may not need to be an AST; we merely need to ensure that
+		 * we gather telemetry at the point where all of the information
+		 * that we want has been added to the process.
+		 */
+		task_set_32bit_log_flag(get_threadtask(thread));
+		act_set_astbsd(thread);
+	}
+#endif /* CONFIG_32BIT_TELEMETRY */
+
 	return(LOAD_SUCCESS);
 }
 
@@ -609,14 +627,20 @@ parse_machfile(
 	 *	Check to see if right machine type.
 	 */
 	if (((cpu_type_t)(header->cputype & ~CPU_ARCH_MASK) != (cpu_type() & ~CPU_ARCH_MASK)) ||
-	    !grade_binary(header->cputype, 
+	    !grade_binary(header->cputype,
 	    	header->cpusubtype & ~CPU_SUBTYPE_MASK))
 		return(LOAD_BADARCH);
-		
+
+#if __x86_64__
+	if (bootarg_no32exec && (header->cputype == CPU_TYPE_X86)) {
+		return(LOAD_BADARCH_X86);
+	}
+#endif
+
 	abi64 = ((header->cputype & CPU_ARCH_ABI64) == CPU_ARCH_ABI64);
-		
+
 	switch (header->filetype) {
-	
+
 	case MH_EXECUTE:
 		if (depth != 1) {
 			return (LOAD_FAILURE);
@@ -1121,34 +1145,9 @@ parse_machfile(
 			break;
 	}
 
-	if (ret == LOAD_SUCCESS) { 
-		if (! got_code_signatures) {
-			if (cs_enforcement(NULL)) {
-				ret = LOAD_FAILURE;
-			} else {
-#if !CONFIG_EMBEDDED
-                               /*
-                                * No embedded signatures: look for detached by taskgated,
-                                * this is only done on OSX, on embedded platforms we expect everything
-                                * to be have embedded signatures.
-                                */
-				struct cs_blob *blob;
-
-				blob = ubc_cs_blob_get(vp, -1, file_offset);
-				if (blob != NULL) {
-					unsigned int cs_flag_data = blob->csb_flags;
-					if(0 != ubc_cs_generation_check(vp)) {
-						if (0 != ubc_cs_blob_revalidate(vp, blob, imgp, 0)) {
-							/* clear out the flag data if revalidation fails */
-							cs_flag_data = 0;
-							result->csflags &= ~CS_VALID;
-						}
-					}
-					/* get flags to be applied to the process */
-					result->csflags |= cs_flag_data;
-				}
-#endif
-			}
+	if (ret == LOAD_SUCCESS) {
+		if(!got_code_signatures && cs_enforcement(NULL)) {
+			ret = LOAD_FAILURE;
 		}
 
 		/* Make sure if we need dyld, we got it */

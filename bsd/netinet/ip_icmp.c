@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2016 Apple Inc. All rights reserved.
+ * Copyright (c) 2000-2018 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
@@ -263,7 +263,13 @@ icmp_error(
 		    (n = m_pullup(n, (oiphlen + sizeof(struct tcphdr)))) == NULL)
 			goto freeit;
 
+		/*
+		 * Reinit pointers derived from mbuf data pointer
+		 * as things might have moved around with m_pullup
+		 */
+		oip = mtod(n, struct ip *);
 		th = (struct tcphdr *)(void *)((caddr_t)oip + oiphlen);
+
 		if (th != ((struct tcphdr *)P2ROUNDDOWN(th,
 		    sizeof(u_int32_t))))
 			goto freeit;
@@ -277,6 +283,13 @@ icmp_error(
 		if (n->m_len < (oiphlen + tcphlen) &&
 		    (n = m_pullup(n, (oiphlen + tcphlen))) == NULL)
 			goto freeit;
+
+		/*
+		 * Reinit pointers derived from mbuf data pointer
+		 * as things might have moved around with m_pullup
+		 */
+		oip = mtod(n, struct ip *);
+		th = (struct tcphdr *)(void *)((caddr_t)oip + oiphlen);
 
 		icmpelen = max(tcphlen, min(icmp_datalen,
 		    (oip->ip_len - oiphlen)));
@@ -538,9 +551,17 @@ icmp_input(struct mbuf *m, int hlen)
 		 * notification to TCP layer.
 		 */
 		ctlfunc = ip_protox[icp->icmp_ip.ip_p]->pr_ctlinput;
-		if (ctlfunc)
+
+		if (ctlfunc) {
+			LCK_MTX_ASSERT(inet_domain_mutex, LCK_MTX_ASSERT_OWNED);
+
+			lck_mtx_unlock(inet_domain_mutex);
+
 			(*ctlfunc)(code, (struct sockaddr *)&icmpsrc,
 				   (void *)&icp->icmp_ip, m->m_pkthdr.rcvif);
+
+			lck_mtx_lock(inet_domain_mutex);
+		}
 		break;
 
 	badcode:
@@ -911,9 +932,13 @@ icmp_send(struct mbuf *m, struct mbuf *opts)
 	int hlen;
 	struct icmp *icp;
 	struct route ro;
-	struct ip_out_args ipoa = { IFSCOPE_NONE, { 0 },
-	    IPOAF_SELECT_SRCIF | IPOAF_BOUND_SRCADDR, 0,
-	    SO_TC_UNSPEC, _NET_SERVICE_TYPE_UNSPEC };
+	struct ip_out_args ipoa;
+
+	bzero(&ipoa, sizeof(ipoa));
+	ipoa.ipoa_boundif = IFSCOPE_NONE;
+	ipoa.ipoa_flags = IPOAF_SELECT_SRCIF | IPOAF_BOUND_SRCADDR;
+	ipoa.ipoa_sotc = SO_TC_UNSPEC;
+	ipoa.ipoa_netsvctype = _NET_SERVICE_TYPE_UNSPEC;
 
 	if (!(m->m_pkthdr.pkt_flags & PKTF_LOOP) && m->m_pkthdr.rcvif != NULL) {
 		ipoa.ipoa_boundif = m->m_pkthdr.rcvif->if_index;

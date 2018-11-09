@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2018 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -2498,7 +2498,7 @@ ipsec6_update_routecache_and_output(
 	struct secasvar *sav)
 {
 	struct sockaddr_in6* dst6;
-	struct route *ro6;
+	struct route_in6 *ro6;
 	struct ip6_hdr *ip6;
 	errno_t error = 0;
 
@@ -2530,7 +2530,7 @@ ipsec6_update_routecache_and_output(
 		dst6->sin6_family = AF_INET6;
 		dst6->sin6_len = sizeof(*dst6);
 		dst6->sin6_addr = ip6->ip6_dst;
-		rtalloc_scoped(ro6, sav->sah->outgoing_if);
+		rtalloc_scoped((struct route *)ro6, sav->sah->outgoing_if);
 		if (ro6->ro_rt) {
 		        RT_LOCK(ro6->ro_rt);
 		}
@@ -2557,7 +2557,7 @@ ipsec6_update_routecache_and_output(
 	        dst6 = (struct sockaddr_in6 *)(void *)ro6->ro_rt->rt_gateway;
 	RT_UNLOCK(ro6->ro_rt);
 	ROUTE_RELEASE(&state->ro);
-	route_copyout(&state->ro, ro6, sizeof(state->ro));
+	route_copyout((struct route *)&state->ro, (struct route *)ro6, sizeof(struct route_in6));
 	state->dst = (struct sockaddr *)dst6;
 	state->tunneled = 6;
 	// release sadb_mutex, after updating sah's route cache                                                                                                                          
@@ -3162,7 +3162,7 @@ ipsec4_output_internal(struct ipsec_output_state *state, struct secasvar *sav)
 
 			// grab sadb_mutex, before updating sah's route cache
 			lck_mtx_lock(sadb_mutex);
-			ro4= &sav->sah->sa_route;
+			ro4= (struct route *)&sav->sah->sa_route;
 			dst4 = (struct sockaddr_in *)(void *)&ro4->ro_dst;
 			if (ro4->ro_rt != NULL) {
 			        RT_LOCK(ro4->ro_rt);
@@ -3201,7 +3201,7 @@ ipsec4_output_internal(struct ipsec_output_state *state, struct secasvar *sav)
 			        dst4 = (struct sockaddr_in *)(void *)ro4->ro_rt->rt_gateway;
 			RT_UNLOCK(ro4->ro_rt);
 			ROUTE_RELEASE(&state->ro);
-			route_copyout(&state->ro, ro4, sizeof(state->ro));
+			route_copyout((struct route *)&state->ro, ro4, sizeof(struct route));
 			state->dst = (struct sockaddr *)dst4;
 			state->tunneled = 4;
 			// release sadb_mutex, after updating sah's route cache                                                                                                    
@@ -3644,7 +3644,7 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 	int error = 0;
 	int plen;
 	struct sockaddr_in6* dst6;
-	struct route *ro6;
+	struct route_in6 *ro6;
 	
 	/* validity check */
 	if (sav == NULL || sav->sah == NULL || sav->sah->saidx.mode != IPSEC_MODE_TUNNEL) {
@@ -3689,8 +3689,13 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 			struct sockaddr_in* dst4;
 			struct route *ro4 = NULL;
 			struct route  ro4_copy;
-			struct ip_out_args ipoa = { IFSCOPE_NONE, { 0 }, IPOAF_SELECT_SRCIF, 0,
-			    SO_TC_UNSPEC, _NET_SERVICE_TYPE_UNSPEC };
+			struct ip_out_args ipoa;
+
+			bzero(&ipoa, sizeof(ipoa));
+			ipoa.ipoa_boundif = IFSCOPE_NONE;
+			ipoa.ipoa_flags = IPOAF_SELECT_SRCIF;
+			ipoa.ipoa_sotc = SO_TC_UNSPEC;
+			ipoa.ipoa_netsvctype = _NET_SERVICE_TYPE_UNSPEC;
 			
 			if (must_be_last)
 				*must_be_last = 1;
@@ -3706,7 +3711,7 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 			
 			// grab sadb_mutex, to update sah's route cache and get a local copy of it
 			lck_mtx_lock(sadb_mutex);
-			ro4 = &sav->sah->sa_route;
+			ro4 = (struct route *)&sav->sah->sa_route;
 			dst4 = (struct sockaddr_in *)(void *)&ro4->ro_dst;
 			if (ro4->ro_rt) {
 				RT_LOCK(ro4->ro_rt);
@@ -3724,7 +3729,7 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 			} else {
 				RT_UNLOCK(ro4->ro_rt);
 			}
-			route_copyout(&ro4_copy, ro4, sizeof(ro4_copy));
+			route_copyout(&ro4_copy, ro4, sizeof(struct route));
 			// release sadb_mutex, after updating sah's route cache and getting a local copy
 			lck_mtx_unlock(sadb_mutex);
 			state->m = ipsec4_splithdr(state->m);
@@ -3789,7 +3794,7 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 			state->m = NULL;
 			// grab sadb_mutex, to synchronize the sah's route cache with the local copy
 			lck_mtx_lock(sadb_mutex);
-			route_copyin(&ro4_copy, ro4, sizeof(ro4_copy));
+			route_copyin(&ro4_copy, ro4, sizeof(struct route));
 			lck_mtx_unlock(sadb_mutex);
 			if (error != 0)
 				goto bad;
@@ -3821,7 +3826,7 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 			dst6->sin6_family = AF_INET6;
 			dst6->sin6_len = sizeof(*dst6);
 			dst6->sin6_addr = ip6->ip6_dst;
-			rtalloc_scoped(ro6, sav->sah->outgoing_if);
+			rtalloc_scoped((struct route *)ro6, sav->sah->outgoing_if);
 			if (ro6->ro_rt) {
 				RT_LOCK(ro6->ro_rt);
 			}
@@ -3848,7 +3853,7 @@ ipsec6_output_tunnel_internal(struct ipsec_output_state *state, struct secasvar 
 			dst6 = (struct sockaddr_in6 *)(void *)ro6->ro_rt->rt_gateway;
 		RT_UNLOCK(ro6->ro_rt);
 		ROUTE_RELEASE(&state->ro);
-		route_copyout(&state->ro, ro6, sizeof(state->ro));
+		route_copyout((struct route *)&state->ro, (struct route *)ro6, sizeof(struct route_in6));
 		state->dst = (struct sockaddr *)dst6;
 		state->tunneled = 6;
 		// release sadb_mutex, after updating sah's route cache
@@ -4680,11 +4685,15 @@ ipsec_send_natt_keepalive(
 	struct mbuf	       *m;
 	struct ip          *ip;
 	int                 error;
-	struct ip_out_args  ipoa =
-	    { IFSCOPE_NONE, { 0 }, IPOAF_SELECT_SRCIF, 0,
-	    SO_TC_UNSPEC, _NET_SERVICE_TYPE_UNSPEC };
+	struct ip_out_args  ipoa;
 	struct route        ro;
 	int keepalive_interval = natt_keepalive_interval;
+
+	bzero(&ipoa, sizeof(ipoa));
+	ipoa.ipoa_boundif = IFSCOPE_NONE;
+	ipoa.ipoa_flags = IPOAF_SELECT_SRCIF;
+	ipoa.ipoa_sotc = SO_TC_UNSPEC;
+	ipoa.ipoa_netsvctype = _NET_SERVICE_TYPE_UNSPEC;
 
 	LCK_MTX_ASSERT(sadb_mutex, LCK_MTX_ASSERT_NOTOWNED);
 
@@ -4743,7 +4752,7 @@ ipsec_send_natt_keepalive(
 	    rt_key(sav->sah->sa_route.ro_rt)->sa_family != AF_INET)
 		ROUTE_RELEASE(&sav->sah->sa_route);
 
-	route_copyout(&ro, &sav->sah->sa_route, sizeof(ro));
+	route_copyout(&ro, (struct route *)&sav->sah->sa_route, sizeof(struct route));
 	lck_mtx_unlock(sadb_mutex);
 	
 	necp_mark_packet_as_keepalive(m, TRUE);
@@ -4752,7 +4761,7 @@ ipsec_send_natt_keepalive(
 
 	// grab sadb_mutex, to synchronize the sah's route cache with the local copy
 	lck_mtx_lock(sadb_mutex);
-	route_copyin(&ro, &sav->sah->sa_route, sizeof(ro));
+	route_copyin(&ro, (struct route *)&sav->sah->sa_route, sizeof(struct route));
 	lck_mtx_unlock(sadb_mutex);
 	if (error == 0) {
 		sav->natt_last_activity = natt_now;

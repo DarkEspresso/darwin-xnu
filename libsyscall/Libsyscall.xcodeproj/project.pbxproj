@@ -107,6 +107,7 @@
 		29A59AE2183B0DE000E8B896 /* renameat.c in Sources */ = {isa = PBXBuildFile; fileRef = 29A59AE1183B0DE000E8B896 /* renameat.c */; };
 		29A59AE6183B110C00E8B896 /* unlinkat.c in Sources */ = {isa = PBXBuildFile; fileRef = 29A59AE5183B110C00E8B896 /* unlinkat.c */; };
 		2BA88DCC1810A3CE00EB63F6 /* coalition.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BA88DCB1810A3CE00EB63F6 /* coalition.c */; };
+		3695DCC91F3D2C5F0072C0B3 /* reboot.c in Sources */ = {isa = PBXBuildFile; fileRef = 3695DCC81F3D2C5A0072C0B3 /* reboot.c */; };
 		374A36E314748F1300AAF39D /* varargs_wrappers.s in Sources */ = {isa = PBXBuildFile; fileRef = 374A36E214748EE400AAF39D /* varargs_wrappers.s */; };
 		3F538F891A659C5600B37EFD /* persona.c in Sources */ = {isa = PBXBuildFile; fileRef = 3F538F881A659C5600B37EFD /* persona.c */; };
 		401BB71A1BCAE57B005080D3 /* os_channel.c in Sources */ = {isa = PBXBuildFile; fileRef = 401BB7161BCAE539005080D3 /* os_channel.c */; settings = {COMPILER_FLAGS = "-fno-builtin"; }; };
@@ -120,6 +121,7 @@
 		467DAFD4157E8AF200CE68F0 /* guarded_open_np.c in Sources */ = {isa = PBXBuildFile; fileRef = 467DAFD3157E8AF200CE68F0 /* guarded_open_np.c */; };
 		4BDD5F1D1891AB2F004BF300 /* mach_approximate_time.c in Sources */ = {isa = PBXBuildFile; fileRef = 4BDD5F1B1891AB2F004BF300 /* mach_approximate_time.c */; };
 		4BDD5F1E1891AB2F004BF300 /* mach_approximate_time.s in Sources */ = {isa = PBXBuildFile; fileRef = 4BDD5F1C1891AB2F004BF300 /* mach_approximate_time.s */; };
+		726D915520ACD7FC0039A2FE /* mach_bridge_remote_time.c in Sources */ = {isa = PBXBuildFile; fileRef = 726D915420ACD7FC0039A2FE /* mach_bridge_remote_time.c */; };
 		729B7D0A15C8938C000E2501 /* carbon_delete.c in Sources */ = {isa = PBXBuildFile; fileRef = FB50F1B315AB7DE700F814BA /* carbon_delete.c */; };
 		72B1E6ED190723DB00FB3FA2 /* guarded_open_dprotected_np.c in Sources */ = {isa = PBXBuildFile; fileRef = 72B1E6EC190723DB00FB3FA2 /* guarded_open_dprotected_np.c */; };
 		72E09E941B444B19006F11A4 /* mach_continuous_time.c in Sources */ = {isa = PBXBuildFile; fileRef = 72FB18801B437F7A00181A5B /* mach_continuous_time.c */; };
@@ -491,6 +493,7 @@
 		29A59AE1183B0DE000E8B896 /* renameat.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = renameat.c; sourceTree = "<group>"; };
 		29A59AE5183B110C00E8B896 /* unlinkat.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = unlinkat.c; sourceTree = "<group>"; };
 		2BA88DCB1810A3CE00EB63F6 /* coalition.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = coalition.c; sourceTree = "<group>"; };
+		3695DCC81F3D2C5A0072C0B3 /* reboot.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = reboot.c; sourceTree = "<group>"; };
 		374A36E214748EE400AAF39D /* varargs_wrappers.s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = varargs_wrappers.s; sourceTree = "<group>"; };
 		37DDFB7614748713009D3355 /* syscall.map */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = syscall.map; sourceTree = "<group>"; };
 		3F538F881A659C5600B37EFD /* persona.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = persona.c; sourceTree = "<group>"; };
@@ -505,6 +508,7 @@
 		467DAFD3157E8AF200CE68F0 /* guarded_open_np.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = guarded_open_np.c; sourceTree = "<group>"; };
 		4BDD5F1B1891AB2F004BF300 /* mach_approximate_time.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = mach_approximate_time.c; sourceTree = "<group>"; };
 		4BDD5F1C1891AB2F004BF300 /* mach_approximate_time.s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = mach_approximate_time.s; sourceTree = "<group>"; };
+		726D915420ACD7FC0039A2FE /* mach_bridge_remote_time.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = mach_bridge_remote_time.c; path = wrappers/mach_bridge_remote_time.c; sourceTree = "<group>"; };
 		72B1E6EC190723DB00FB3FA2 /* guarded_open_dprotected_np.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = guarded_open_dprotected_np.c; sourceTree = "<group>"; };
 		72FB18801B437F7A00181A5B /* mach_continuous_time.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = mach_continuous_time.c; sourceTree = "<group>"; };
 		7466C923170CB99B004557CC /* vm_page_size.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = vm_page_size.h; sourceTree = "<group>"; };
@@ -650,6 +654,7 @@
 		08FB7794FE84155DC02AAC07 /* mach */ = {
 			isa = PBXGroup;
 			children = (
+				726D915420ACD7FC0039A2FE /* mach_bridge_remote_time.c */,
 				C9D9BE0F114FFADC0000D8B9 /* Libsyscall.xcconfig */,
 				24D1158911E672270063D54D /* Platforms */,
 				24D1156511E671B20063D54D /* custom */,
@@ -805,6 +810,7 @@
 				BA9973461C3B4C8A00B14D8C /* quota_obsolete.c */,
 				24B8C2611237F53900D36CC3 /* remove-counter.c */,
 				248AA966122C7CDA0085F5B1 /* rename.c */,
+				3695DCC81F3D2C5A0072C0B3 /* reboot.c */,
 				29A59AE1183B0DE000E8B896 /* renameat.c */,
 				906AA2D018F74CD1001C681A /* renamex.c */,
 				248AA964122C7C330085F5B1 /* rmdir.c */,
@@ -1301,6 +1307,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				726D915520ACD7FC0039A2FE /* mach_bridge_remote_time.c in Sources */,
 				403C7CEE1E1F4E4400D6FEEF /* os_packet.c in Sources */,
 				E214BDC81C2E358300CEE8A3 /* clonefile.c in Sources */,
 				C9D9BD19114B00600000D8B9 /* clock_priv.defs in Sources */,
@@ -1319,6 +1326,7 @@
 				C9D9BD4D114B00600000D8B9 /* processor.defs in Sources */,
 				C9D9BD53114B00600000D8B9 /* netname.defs in Sources */,
 				C9D9BD57114B00600000D8B9 /* task.defs in Sources */,
+				3695DCC91F3D2C5F0072C0B3 /* reboot.c in Sources */,
 				C9D9BD58114B00600000D8B9 /* thread_act.defs in Sources */,
 				72E09E941B444B19006F11A4 /* mach_continuous_time.c in Sources */,
 				29A59AE6183B110C00E8B896 /* unlinkat.c in Sources */,

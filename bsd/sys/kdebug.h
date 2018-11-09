@@ -636,30 +636,31 @@ extern void kdebug_reset(void);
 #define DBG_IODISK			DBG_IOSTORAGE		/* OBSOLETE: Use DBG_IOSTORAGE instead */
 
 /* **** The Kernel Debug Sub Classes for Device Drivers (DBG_DRIVERS) **** */
-#define DBG_DRVSTORAGE       1 /* Storage layers */
-#define DBG_DRVNETWORK       2 /* Network layers */
-#define DBG_DRVKEYBOARD      3 /* Keyboard */
-#define DBG_DRVHID           4 /* HID Devices */
-#define DBG_DRVAUDIO         5 /* Audio */
-#define DBG_DRVSERIAL        7 /* Serial */
-#define DBG_DRVSAM           8 /* SCSI Architecture Model layers */
-#define DBG_DRVPARALLELATA   9 /* Parallel ATA */
-#define DBG_DRVPARALLELSCSI 10 /* Parallel SCSI */
-#define DBG_DRVSATA         11 /* Serial ATA */
-#define DBG_DRVSAS          12 /* SAS */
-#define DBG_DRVFIBRECHANNEL 13 /* FiberChannel */
-#define DBG_DRVUSB          14 /* USB */
-#define DBG_DRVBLUETOOTH    15 /* Bluetooth */
-#define DBG_DRVFIREWIRE     16 /* FireWire */
-#define DBG_DRVINFINIBAND   17 /* Infiniband */
-#define DBG_DRVGRAPHICS     18 /* Graphics */
-#define DBG_DRVSD           19 /* Secure Digital */
-#define DBG_DRVNAND         20 /* NAND drivers and layers */
-#define DBG_SSD             21 /* SSD */
-#define DBG_DRVSPI          22 /* SPI */
-#define DBG_DRVWLAN_802_11  23 /* WLAN 802.11 */
-#define DBG_DRVSSM          24 /* System State Manager(AppleSSM) */
-#define DBG_DRVSMC          25 /* System Management Controller */
+#define DBG_DRVSTORAGE        1 /* Storage layers */
+#define DBG_DRVNETWORK        2 /* Network layers */
+#define DBG_DRVKEYBOARD       3 /* Keyboard */
+#define DBG_DRVHID            4 /* HID Devices */
+#define DBG_DRVAUDIO          5 /* Audio */
+#define DBG_DRVSERIAL         7 /* Serial */
+#define DBG_DRVSAM            8 /* SCSI Architecture Model layers */
+#define DBG_DRVPARALLELATA    9 /* Parallel ATA */
+#define DBG_DRVPARALLELSCSI  10 /* Parallel SCSI */
+#define DBG_DRVSATA          11 /* Serial ATA */
+#define DBG_DRVSAS           12 /* SAS */
+#define DBG_DRVFIBRECHANNEL  13 /* FiberChannel */
+#define DBG_DRVUSB           14 /* USB */
+#define DBG_DRVBLUETOOTH     15 /* Bluetooth */
+#define DBG_DRVFIREWIRE      16 /* FireWire */
+#define DBG_DRVINFINIBAND    17 /* Infiniband */
+#define DBG_DRVGRAPHICS      18 /* Graphics */
+#define DBG_DRVSD            19 /* Secure Digital */
+#define DBG_DRVNAND          20 /* NAND drivers and layers */
+#define DBG_SSD              21 /* SSD */
+#define DBG_DRVSPI           22 /* SPI */
+#define DBG_DRVWLAN_802_11   23 /* WLAN 802.11 */
+#define DBG_DRVSSM           24 /* System State Manager(AppleSSM) */
+#define DBG_DRVSMC           25 /* System Management Controller */
+#define DBG_DRVMACEFIMANAGER 26 /* Mac EFI Manager */
 
 /* Backwards compatibility */
 #define	DBG_DRVPOINTING		DBG_DRVHID	/* OBSOLETE: Use DBG_DRVHID instead */
@@ -684,6 +685,7 @@ extern void kdebug_reset(void);
 #define DBG_HFS       0x8     /* HFS-specific events; see the hfs project */
 #define DBG_APFS      0x9     /* APFS-specific events; see the apfs project */
 #define DBG_SMB       0xA     /* SMB-specific events; see the smb project */
+#define DBG_MOUNT     0xB     /* Mounting/unmounting operations */
 #define DBG_EXFAT     0xE     /* ExFAT-specific events; see the exfat project */
 #define DBG_MSDOS     0xF     /* FAT-specific events; see the msdosfs project */
 #define DBG_ACFS      0x10    /* Xsan-specific events; see the XsanFS project */
@@ -842,6 +844,7 @@ extern void kdebug_reset(void);
 #define DBG_APP_DFR             0x0E
 #define DBG_APP_SAMBA           0x80
 #define DBG_APP_EOSSUPPORT      0x81
+#define DBG_APP_MACEFIMANAGER   0x82
 
 /* Kernel Debug codes for Throttling (DBG_THROTTLE) */
 #define OPEN_THROTTLE_WINDOW	0x1
@@ -1153,11 +1156,19 @@ extern unsigned int kdebug_enable;
 	do {                                                                      \
 		if (KDBG_IMPROBABLE(kdebug_enable & (type))) {                        \
 			kernel_debug((x), (uintptr_t)(a), (uintptr_t)(b), (uintptr_t)(c), \
-				(uintptr_t)(d), (uintptr_t)(e));                              \
+				(uintptr_t)(d), 0);                                           \
 		}                                                                     \
+	} while (0)
+#define KERNEL_DEBUG_CONSTANT_IST1(x, a, b, c, d, e)                     \
+	do {                                                                       \
+		if (KDBG_IMPROBABLE(kdebug_enable)) {                         \
+			kernel_debug1((x), (uintptr_t)(a), (uintptr_t)(b), (uintptr_t)(c), \
+				(uintptr_t)(d), (uintptr_t)(e));                               \
+		}                                                                      \
 	} while (0)
 #else /* (KDEBUG_LEVEL >= KDEBUG_LEVEL_IST) */
 #define KERNEL_DEBUG_CONSTANT_IST(type, x, a, b, c, d, e) do {} while (0)
+#define KERNEL_DEBUG_CONSTANT_IST1(x, a, b, c, d, e) do {} while (0)
 #endif /* (KDEBUG_LEVEL >= KDEBUG_LEVEL_IST) */
 
 #if NO_KDEBUG
@@ -1393,11 +1404,11 @@ void kdbg_trace_data(struct proc *proc, long *arg_pid, long *arg_uniqueid);
 void kdbg_trace_string(struct proc *proc, long *arg1, long *arg2, long *arg3, long *arg4);
 
 void kdbg_dump_trace_to_file(const char *);
-void kdebug_init(unsigned int n_events, char *filterdesc);
-void kdebug_trace_start(unsigned int n_events, const char *filterdesc, boolean_t at_wake);
+void kdebug_init(unsigned int n_events, char *filterdesc, boolean_t wrapping);
+void kdebug_trace_start(unsigned int n_events, const char *filterdesc,
+		boolean_t wrapping, boolean_t at_wake);
 void kdebug_free_early_buf(void);
 struct task;
-void kdbg_get_task_name(char*, int, struct task *task);
 boolean_t disable_wrap(uint32_t *old_slowcheck, uint32_t *old_flags);
 void enable_wrap(uint32_t old_slowcheck, boolean_t lostevents);
 void release_storage_unit(int cpu,  uint32_t storage_unit);
@@ -1466,12 +1477,12 @@ kdbg_set_timestamp_and_cpu(kd_buf *kp, uint64_t thetime, int cpu)
 static inline void
 kdbg_set_cpu(kd_buf *kp, int cpu)
 {
-	kp->cpuid = cpu;
+	kp->cpuid = (unsigned int)cpu;
 }
 static inline int
 kdbg_get_cpu(kd_buf *kp)
 {
-	return kp->cpuid;
+	return (int)kp->cpuid;
 }
 static inline void
 kdbg_set_timestamp(kd_buf *kp, uint64_t thetime)

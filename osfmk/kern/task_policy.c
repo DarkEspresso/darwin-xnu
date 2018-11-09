@@ -2533,7 +2533,7 @@ task_suspend_cpumon(task_t task)
 	 */
 	task->rusage_cpu_flags &= ~(TASK_RUSECPU_FLAGS_PERTHR_LIMIT | TASK_RUSECPU_FLAGS_FATAL_CPUMON);		
 	queue_iterate(&task->threads, thread, thread_t, task_threads) {
-		set_astledger(thread);
+		act_set_astledger(thread);
 	}
 
 	return KERN_SUCCESS;
@@ -2573,7 +2573,7 @@ task_enable_cpumon_locked(task_t task)
 
 	task->rusage_cpu_flags |= TASK_RUSECPU_FLAGS_PERTHR_LIMIT;
 	queue_iterate(&task->threads, thread, thread_t, task_threads) {
-		set_astledger(thread);
+		act_set_astledger(thread);
 	}
 
 	return KERN_SUCCESS;
@@ -3709,16 +3709,13 @@ send_resource_violation(typeof(send_cpu_usage_violation) sendfunc,
 	                           HOST_RESOURCE_NOTIFY_PORT, &dstport);
 	if (kr)         goto finish;
 
-	/* TH_OPT_HONOR_QLIMIT causes ipc_kmsg_send() to respect the
-	 * queue limit.  It also unsets this flag, but this code also
-	 * unsets it for clarity and in case that code changes. */
-	curthread->options |= TH_OPT_HONOR_QLIMIT;
+	thread_set_honor_qlimit(curthread);
 	kr = sendfunc(dstport,
 	              procname, pid, proc_path, timestamp,
 		      linfo->lei_balance, linfo->lei_last_refill,
 	              linfo->lei_limit, linfo->lei_refill_period,
 	              flags);
-	curthread->options &= (~TH_OPT_HONOR_QLIMIT);
+	thread_clear_honor_qlimit(curthread);
 
 	ipc_port_release_send(dstport);
 

@@ -112,6 +112,10 @@
 #include <sys/bsdtask_info.h>
 #include <sys/persona.h>
 
+#ifdef CONFIG_32BIT_TELEMETRY
+#include <sys/kasl.h>
+#endif /* CONFIG_32BIT_TELEMETRY */
+
 #if CONFIG_CSR
 #include <sys/csr.h>
 #endif
@@ -125,6 +129,10 @@
 #endif
 
 #include <libkern/crypto/sha1.h>
+
+#ifdef CONFIG_32BIT_TELEMETRY
+#define MAX_32BIT_EXEC_SIG_SIZE 160
+#endif /* CONFIG_32BIT_TELEMETRY */
 
 /*
  * Structure associated with user cacheing.
@@ -163,7 +171,9 @@ extern int cs_enforcement_enable;
 #endif
 #if CONFIG_COREDUMP
 /* Name to give to core files */
-#if CONFIG_EMBEDDED
+#if defined(XNU_TARGET_OS_BRIDGE)
+__XNU_PRIVATE_EXTERN char corefilename[MAXPATHLEN+1] = {"/private/var/internal/%N.core"};
+#elif CONFIG_EMBEDDED
 __XNU_PRIVATE_EXTERN char corefilename[MAXPATHLEN+1] = {"/private/var/cores/%N.core"};
 #else
 __XNU_PRIVATE_EXTERN char corefilename[MAXPATHLEN+1] = {"/cores/core.%P"};
@@ -174,11 +184,13 @@ __XNU_PRIVATE_EXTERN char corefilename[MAXPATHLEN+1] = {"/cores/core.%P"};
 #include <kern/backtrace.h>
 #endif
 
+typedef uint64_t unaligned_u64 __attribute__((aligned(1)));
+
 static void orphanpg(struct pgrp * pg);
 void proc_name_kdp(task_t t, char * buf, int size);
 void * proc_get_uthread_uu_threadlist(void * uthread_v);
 int proc_threadname_kdp(void * uth, char * buf, size_t size);
-void proc_starttime_kdp(void * p, uint64_t * tv_sec, uint64_t * tv_usec, uint64_t * abstime);
+void proc_starttime_kdp(void * p, unaligned_u64 *tv_sec, unaligned_u64 *tv_usec, unaligned_u64 *abstime);
 char * proc_name_address(void * p);
 
 /* TODO: make a header that's exported and usable in osfmk */
@@ -905,23 +917,20 @@ proc_threadname_kdp(void * uth, char * buf, size_t size)
 	return 0;
 }
 
+
 /* note that this function is generally going to be called from stackshot,
  * and the arguments will be coming from a struct which is declared packed
  * thus the input arguments will in general be unaligned. We have to handle
  * that here. */
 void
-proc_starttime_kdp(void *p, uint64_t *tv_sec, uint64_t *tv_usec, uint64_t *abstime)
+proc_starttime_kdp(void *p, unaligned_u64 *tv_sec, unaligned_u64 *tv_usec, unaligned_u64 *abstime)
 {
 	proc_t pp = (proc_t)p;
-	struct uint64p {
-		uint64_t val;
-	} __attribute__((packed));
-
 	if (pp != PROC_NULL) {
 		if (tv_sec != NULL)
-			((struct uint64p *)tv_sec)->val = pp->p_start.tv_sec;
+			*tv_sec = pp->p_start.tv_sec;
 		if (tv_usec != NULL)
-			((struct uint64p *)tv_usec)->val = pp->p_start.tv_usec;
+			*tv_usec = pp->p_start.tv_usec;
 		if (abstime != NULL) {
 			if (pp->p_stats != NULL)
 				*abstime = pp->p_stats->ps_start;
@@ -1153,7 +1162,7 @@ proc_getexecutablevnode(proc_t p)
 		if (vnode_getwithref(tvp) == 0) {
 			return tvp;
 		}
-	}       
+	}
 
 	return NULLVP;
 }
@@ -3429,3 +3438,80 @@ proc_get_uthread_uu_threadlist(void * uthread_v)
 	uthread_t uth = (uthread_t)uthread_v;
 	return (uth != NULL) ? uth->uu_threadlist : NULL;
 }
+
+#ifdef CONFIG_32BIT_TELEMETRY
+void
+proc_log_32bit_telemetry(proc_t p)
+{
+	/* Gather info */
+	char signature_buf[MAX_32BIT_EXEC_SIG_SIZE] = { 0 };
+	char * signature_cur_end = &signature_buf[0];
+	char * signature_buf_end = &signature_buf[MAX_32BIT_EXEC_SIG_SIZE - 1];
+	int bytes_printed = 0;
+
+	const char * teamid = NULL;
+	const char * identity = NULL;
+	struct cs_blob * csblob = NULL;
+
+	proc_list_lock();
+
+	/*
+	 * Get proc name and parent proc name; if the parent execs, we'll get a
+	 * garbled name.
+	 */
+	bytes_printed = snprintf(signature_cur_end,
+	                         signature_buf_end - signature_cur_end,
+	                         "%s,%s,", p->p_name,
+	                         (p->p_pptr ? p->p_pptr->p_name : ""));
+
+	if (bytes_printed > 0) {
+		signature_cur_end += bytes_printed;
+	}
+
+	proc_list_unlock();
+
+	/* Get developer info. */
+	vnode_t v = proc_getexecutablevnode(p);
+
+	if (v) {
+		csblob = csvnode_get_blob(v, 0);
+
+		if (csblob) {
+			teamid = csblob_get_teamid(csblob);
+			identity = csblob_get_identity(csblob);
+		}
+	}
+
+	if (teamid == NULL) {
+		teamid = "";
+	}
+
+	if (identity == NULL) {
+		identity = "";
+	}
+
+	bytes_printed = snprintf(signature_cur_end,
+	                         signature_buf_end - signature_cur_end,
+	                         "%s,%s", teamid, identity);
+
+	if (bytes_printed > 0) {
+		signature_cur_end += bytes_printed;
+	}
+
+	if (v) {
+		vnode_put(v);
+	}
+
+	/*
+	 * We may want to rate limit here, although the SUMMARIZE key should
+	 * help us aggregate events in userspace.
+	 */
+
+	/* Emit log */
+	kern_asl_msg(LOG_DEBUG, "messagetracer", 3,
+	/* 0 */	"com.apple.message.domain", "com.apple.kernel.32bit_exec",
+	/* 1 */ "com.apple.message.signature", signature_buf,
+	/* 2 */ "com.apple.message.summarize", "YES",
+		NULL);
+}
+#endif /* CONFIG_32BIT_TELEMETRY */

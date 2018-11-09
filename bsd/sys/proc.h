@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2016 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2000-2018 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -364,10 +364,15 @@ extern uint64_t proc_did_throttle(proc_t);
 
 extern void proc_coalitionids(proc_t, uint64_t [COALITION_NUM_TYPES]);
 
+#ifdef CONFIG_32BIT_TELEMETRY
+extern void proc_log_32bit_telemetry(proc_t p);
+#endif /* CONFIG_32BIT_TELEMETRY */
+
 #endif /* XNU_KERNEL_PRIVATE*/
 
 #ifdef KERNEL_PRIVATE
 extern vnode_t proc_getexecutablevnode(proc_t); /* Returned with iocount, use vnode_put() to drop */
+extern int networking_memstatus_callout(proc_t p, uint32_t);
 #endif
 
 __END_DECLS

@@ -77,9 +77,6 @@
 #endif
 #include <i386/acpi.h>
 
-#include <chud/chud_xnu.h>
-#include <chud/chud_xnu_private.h>
-
 #include <sys/kdebug.h>
 
 #include <console/serial_protos.h>
@@ -189,7 +186,7 @@ boolean_t i386_smp_init(int nmi_vector, i386_intr_func_t nmi_handler,
 		int ipi_vector, i386_intr_func_t ipi_handler);
 void i386_start_cpu(int lapic_id, int cpu_num);
 void i386_send_NMI(int cpu);
-
+void NMIPI_enable(boolean_t);
 #if GPROF
 /*
  * Initialize dummy structs for profiling. These aren't used but
@@ -552,10 +549,6 @@ cpu_signal_handler(x86_saved_state_t *regs)
 			DBGLOG(cpu_handle,my_cpu,MP_TLB_FLUSH);
 			i_bit_clear(MP_TLB_FLUSH, my_word);
 			pmap_update_interrupt();
-		} else if (i_bit(MP_CHUD, my_word)) {
-			DBGLOG(cpu_handle,my_cpu,MP_CHUD);
-			i_bit_clear(MP_CHUD, my_word);
-			chudxnu_cpu_signal_handler();
 		} else if (i_bit(MP_CALL, my_word)) {
 			DBGLOG(cpu_handle,my_cpu,MP_CALL);
 			i_bit_clear(MP_CALL, my_word);
@@ -699,7 +692,7 @@ NMI_cpus(void)
 	intrs_enabled = ml_set_interrupts_enabled(FALSE);
 
 	for (cpu = 0; cpu < real_ncpus; cpu++) {
-		if (!cpu_datap(cpu)->cpu_running)
+		if (!cpu_is_running(cpu))
 			continue;
 		cpu_datap(cpu)->cpu_NMI_acknowledged = FALSE;
 		cpu_NMI_interrupt(cpu);
@@ -1034,6 +1027,7 @@ NMIPI_panic(cpumask_t cpu_mask, NMI_reason_t why) {
 	unsigned int cpu, cpu_bit;
 	uint64_t deadline;
 
+	NMIPI_enable(TRUE);
 	NMI_panic_reason = why;
 
 	for (cpu = 0, cpu_bit = 1; cpu < real_ncpus; cpu++, cpu_bit <<= 1) {
@@ -1292,7 +1286,7 @@ mp_cpus_call1(
 	}
 	for (cpu = 0; cpu < (cpu_t) real_ncpus; cpu++) {
 		if (((cpu_to_cpumask(cpu) & cpus) == 0) ||
-		    !cpu_datap(cpu)->cpu_running)
+		    !cpu_is_running(cpu))
 			continue;
 		tsc_spin_start = rdtsc64();
 		if (cpu == (cpu_t) cpu_number()) {
@@ -1460,7 +1454,7 @@ mp_cpus_kick(cpumask_t cpus)
 	for (cpu = 0; cpu < (cpu_t) real_ncpus; cpu++) {
 		if ((cpu == (cpu_t) cpu_number())
 			|| ((cpu_to_cpumask(cpu) & cpus) == 0)
-			|| (!cpu_datap(cpu)->cpu_running))
+			|| !cpu_is_running(cpu))
 		{
 				continue;
 		}
@@ -1618,7 +1612,7 @@ mp_kdp_enter(boolean_t proceed_on_failure)
 	DBG("mp_kdp_enter() signaling other processors\n");
 	if (force_immediate_debugger_NMI == FALSE) {
 		for (cpu = 0; cpu < real_ncpus; cpu++) {
-			if (cpu == my_cpu || !cpu_datap(cpu)->cpu_running)
+			if (cpu == my_cpu || !cpu_is_running(cpu))
 				continue;
 			ncpus++;
 			i386_signal_cpu(cpu, MP_KDP, ASYNC);
@@ -1647,15 +1641,22 @@ mp_kdp_enter(boolean_t proceed_on_failure)
 			cpu_pause();
 		}
 		/* If we've timed out, and some processor(s) are still unresponsive,
-		 * interrupt them with an NMI via the local APIC.
+		 * interrupt them with an NMI via the local APIC, iff a panic is
+		 * in progress.
 		 */
+		if (panic_active()) {
+			NMIPI_enable(TRUE);
+		}
 		if (mp_kdp_ncpus != ncpus) {
+			cpumask_t cpus_NMI_pending = 0;
 			DBG("mp_kdp_enter() timed-out on cpu %d, NMI-ing\n", my_cpu);
 			for (cpu = 0; cpu < real_ncpus; cpu++) {
-				if (cpu == my_cpu || !cpu_datap(cpu)->cpu_running)
+				if (cpu == my_cpu || !cpu_is_running(cpu))
 					continue;
-				if (cpu_signal_pending(cpu, MP_KDP))
+				if (cpu_signal_pending(cpu, MP_KDP)) {
+					cpus_NMI_pending |= cpu_to_cpumask(cpu);
 					cpu_NMI_interrupt(cpu);
+				}
 			}
 			/* Wait again for the same timeout */
 			tsc_timeout = rdtsc64() + (LockTimeOutTSC);
@@ -1664,13 +1665,13 @@ mp_kdp_enter(boolean_t proceed_on_failure)
 				cpu_pause();
 			}
 			if (mp_kdp_ncpus != ncpus) {
-				panic("mp_kdp_enter() timed-out waiting after NMI");
+				kdb_printf("mp_kdp_enter(): %llu, %lu, %u TIMED-OUT WAITING FOR NMI-ACK, PROCEEDING\n", cpus_NMI_pending, mp_kdp_ncpus, ncpus);
 			}
 		}
 	}
 	else
 		for (cpu = 0; cpu < real_ncpus; cpu++) {
-			if (cpu == my_cpu || !cpu_datap(cpu)->cpu_running)
+			if (cpu == my_cpu || !cpu_is_running(cpu))
 				continue;
 			cpu_NMI_interrupt(cpu);
 		}
@@ -2019,7 +2020,7 @@ mp_interrupt_watchdog(void)
 	     cpu < (cpu_t) real_ncpus && !machine_timeout_suspended();
 	     cpu++) {
 		if ((cpu == (cpu_t) cpu_number()) ||
-		    (!cpu_datap(cpu)->cpu_running))
+		    (!cpu_is_running(cpu)))
 			continue;
 		cpu_int_event_time = cpu_datap(cpu)->cpu_int_event_time;
 		if (cpu_int_event_time == 0)

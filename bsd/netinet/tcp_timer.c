@@ -842,6 +842,7 @@ tcp_pmtud_revert_segment_size(struct tcpcb *tp)
 	optlen = tp->t_maxopd - tp->t_maxseg;
 	tp->t_maxopd = tp->t_pmtud_saved_maxopd;
 	tp->t_maxseg = tp->t_maxopd - optlen;
+
 	/*
 	 * Reset the slow-start flight size as it
 	 * may depend on the new MSS
@@ -1040,7 +1041,7 @@ retransmit_packet:
 		    (tp->t_tfo_stats & TFO_S_SYN_DATA_SENT) &&
 		    !(tp->t_tfo_flags & TFO_F_NO_SNDPROBING) &&
 		    ((tp->t_state != TCPS_SYN_SENT && tp->t_rxtshift > 1) ||
-		     tp->t_rxtshift > 2)) {
+		     tp->t_rxtshift > 4)) {
 			/*
 			 * For regular retransmissions, a first one is being
 			 * done for tail-loss probe.
@@ -1062,7 +1063,7 @@ retransmit_packet:
 
 		if (!(tp->t_tfo_flags & TFO_F_HEURISTIC_DONE) &&
 		    (tp->t_tfo_stats & TFO_S_SYN_DATA_ACKED) &&
-		    tp->t_rxtshift > 1) {
+		    tp->t_rxtshift > 3) {
 			if (TSTMP_GT(tp->t_sndtime - 10 * TCP_RETRANSHZ, tp->t_rcvtime)) {
 				tcp_heuristic_tfo_middlebox(tp);
 

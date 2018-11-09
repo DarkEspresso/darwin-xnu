@@ -461,7 +461,6 @@ route_output(struct mbuf *m, struct socket *so)
 	if (info.rti_info[RTAX_GATEWAY] != NULL &&
 	    info.rti_info[RTAX_GATEWAY]->sa_family == AF_INET)
 		sin_set_ifscope(info.rti_info[RTAX_GATEWAY], IFSCOPE_NONE);
-
 	switch (rtm->rtm_type) {
 	case RTM_ADD:
 		if (info.rti_info[RTAX_GATEWAY] == NULL)
@@ -549,9 +548,17 @@ route_output(struct mbuf *m, struct socket *so)
 		switch (rtm->rtm_type) {
 		case RTM_GET: {
 			kauth_cred_t cred;
+			kauth_cred_t* credp;
 			struct ifaddr *ifa2;
 report:
 			cred = kauth_cred_proc_ref(current_proc());
+
+			if (rt->rt_ifp == lo_ifp ||
+			    route_op_entitlement_check(so, NULL, ROUTE_OP_READ, TRUE) != 0)
+				credp = &cred;
+			else
+				credp = NULL;
+
 			ifa2 = NULL;
 			RT_LOCK_ASSERT_HELD(rt);
 			info.rti_info[RTAX_DST] = rt_key(rt);
@@ -580,27 +587,26 @@ report:
 			}
 			if (ifa2 != NULL)
 				IFA_LOCK(ifa2);
-			len = rt_msg2(rtm->rtm_type, &info, NULL, NULL, &cred);
+			len = rt_msg2(rtm->rtm_type, &info, NULL, NULL, credp);
 			if (ifa2 != NULL)
 				IFA_UNLOCK(ifa2);
-			if (len > rtm->rtm_msglen) {
-				struct rt_msghdr *new_rtm;
-				R_Malloc(new_rtm, struct rt_msghdr *, len);
-				if (new_rtm == NULL) {
-					RT_UNLOCK(rt);
-					if (ifa2 != NULL)
-						IFA_REMREF(ifa2);
-					senderr(ENOBUFS);
-				}
-				Bcopy(rtm, new_rtm, rtm->rtm_msglen);
-				R_Free(rtm); rtm = new_rtm;
+			struct rt_msghdr *out_rtm;
+			R_Malloc(out_rtm, struct rt_msghdr *, len);
+			if (out_rtm == NULL) {
+				RT_UNLOCK(rt);
+				if (ifa2 != NULL)
+					IFA_REMREF(ifa2);
+				senderr(ENOBUFS);
 			}
+			Bcopy(rtm, out_rtm, sizeof(struct rt_msghdr));
 			if (ifa2 != NULL)
 				IFA_LOCK(ifa2);
-			(void) rt_msg2(rtm->rtm_type, &info, (caddr_t)rtm,
+			(void) rt_msg2(out_rtm->rtm_type, &info, (caddr_t)out_rtm,
 			    NULL, &cred);
 			if (ifa2 != NULL)
 				IFA_UNLOCK(ifa2);
+			R_Free(rtm);
+			rtm = out_rtm;
 			rtm->rtm_flags = rt->rt_flags;
 			rt_getmetrics(rt, &rtm->rtm_rmx);
 			rtm->rtm_addrs = info.rti_addrs;
@@ -676,7 +682,6 @@ report:
 		}
 		RT_UNLOCK(rt);
 		break;
-
 	default:
 		senderr(EOPNOTSUPP);
 	}
@@ -1514,8 +1519,14 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 	int error = 0, size;
 	struct rt_addrinfo info;
 	kauth_cred_t cred;
+	kauth_cred_t *credp;
 
 	cred = kauth_cred_proc_ref(current_proc());
+	if (rt->rt_ifp == lo_ifp ||
+	    route_op_entitlement_check(NULL, cred, ROUTE_OP_READ, TRUE) != 0)
+		credp = &cred;
+	else
+		credp = NULL;
 
 	RT_LOCK(rt);
 	if (w->w_op == NET_RT_FLAGS && !(rt->rt_flags & w->w_arg))
@@ -1527,7 +1538,7 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 	info.rti_info[RTAX_GENMASK] = rt->rt_genmask;
 
 	if (w->w_op != NET_RT_DUMP2) {
-		size = rt_msg2(RTM_GET, &info, NULL, w, &cred);
+		size = rt_msg2(RTM_GET, &info, NULL, w, credp);
 		if (w->w_req != NULL && w->w_tmem != NULL) {
 			struct rt_msghdr *rtm =
 			    (struct rt_msghdr *)(void *)w->w_tmem;
@@ -1543,7 +1554,7 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 			error = SYSCTL_OUT(w->w_req, (caddr_t)rtm, size);
 		}
 	} else {
-		size = rt_msg2(RTM_GET2, &info, NULL, w, &cred);
+		size = rt_msg2(RTM_GET2, &info, NULL, w, credp);
 		if (w->w_req != NULL && w->w_tmem != NULL) {
 			struct rt_msghdr2 *rtm =
 			    (struct rt_msghdr2 *)(void *)w->w_tmem;

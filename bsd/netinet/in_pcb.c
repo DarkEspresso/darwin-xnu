@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2016 Apple Inc. All rights reserved.
+ * Copyright (c) 2000-2017 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -131,7 +131,6 @@ static u_int16_t inpcb_timeout_run = 0;	/* INPCB timer is scheduled to run */
 static boolean_t inpcb_garbage_collecting = FALSE; /* gc timer is scheduled */
 static boolean_t inpcb_ticking = FALSE;		/* "slow" timer is scheduled */
 static boolean_t inpcb_fast_timer_on = FALSE;
-static boolean_t intcoproc_unrestricted = FALSE;
 
 extern char *proc_best_name(proc_t);
 
@@ -308,9 +307,6 @@ in_pcbinit(void)
 	RB_INIT(&inp_fc_tree);
 	bzero(&key_inp, sizeof(key_inp));
 	lck_mtx_unlock(&inp_fc_lck);
-
-	PE_parse_boot_argn("intcoproc_unrestricted", &intcoproc_unrestricted,
-	    sizeof (intcoproc_unrestricted));
 }
 
 #define	INPCB_HAVE_TIMER_REQ(req)	(((req).intimer_lazy > 0) || \
@@ -732,8 +728,6 @@ in_pcbbind(struct inpcb *inp, struct sockaddr *nam, struct proc *p)
 
 	if (TAILQ_EMPTY(&in_ifaddrhead)) /* XXX broken! */
 		return (EADDRNOTAVAIL);
-	if (inp->inp_lport != 0 || inp->inp_laddr.s_addr != INADDR_ANY)
-		return (EINVAL);
 	if (!(so->so_options & (SO_REUSEADDR|SO_REUSEPORT)))
 		wild = 1;
 
@@ -741,9 +735,14 @@ in_pcbbind(struct inpcb *inp, struct sockaddr *nam, struct proc *p)
 
 	socket_unlock(so, 0); /* keep reference on socket */
 	lck_rw_lock_exclusive(pcbinfo->ipi_lock);
+	if (inp->inp_lport != 0 || inp->inp_laddr.s_addr != INADDR_ANY) {
+		/* another thread completed the bind */
+		lck_rw_done(pcbinfo->ipi_lock);
+		socket_lock(so, 0);
+		return (EINVAL);
+	}
 
 	if (nam != NULL) {
-
 		if (nam->sa_len != sizeof (struct sockaddr_in)) {
 			lck_rw_done(pcbinfo->ipi_lock);
 			socket_lock(so, 0);

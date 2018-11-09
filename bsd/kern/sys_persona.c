@@ -144,7 +144,7 @@ out_error:
 
 static int kpersona_dealloc_syscall(user_addr_t idp)
 {
-	int error;
+	int error = 0;
 	uid_t persona_id;
 	struct persona *persona;
 
@@ -155,19 +155,17 @@ static int kpersona_dealloc_syscall(user_addr_t idp)
 	if (error)
 		return error;
 
-	persona = persona_lookup(persona_id);
+	/* invalidate the persona (deny subsequent spawn/fork) */
+	persona = persona_lookup_and_invalidate(persona_id);
+
 	if (!persona)
 		return ESRCH;
-
-	/* invalidate the persona (deny subsequent spawn/fork) */
-	error = persona_invalidate(persona);
 
 	/* one reference from the _lookup() */
 	persona_put(persona);
 
 	/* one reference from the _alloc() */
-	if (!error)
-		persona_put(persona);
+	persona_put(persona);
 
 	return error;
 }
@@ -215,7 +213,7 @@ static int kpersona_info_syscall(user_addr_t idp, user_addr_t infop)
 	kinfo.persona_id = persona->pna_id;
 	kinfo.persona_type = persona->pna_type;
 	kinfo.persona_gid = persona_get_gid(persona);
-	int ngroups = 0;
+	unsigned ngroups = 0;
 	persona_get_groups(persona, &ngroups, kinfo.persona_groups, NGROUPS);
 	kinfo.persona_ngroups = ngroups;
 	kinfo.persona_gmuid = persona_get_gmuid(persona);
@@ -257,7 +255,7 @@ static int kpersona_pidinfo_syscall(user_addr_t idp, user_addr_t infop)
 	kinfo.persona_id = persona->pna_id;
 	kinfo.persona_type = persona->pna_type;
 	kinfo.persona_gid = persona_get_gid(persona);
-	int ngroups = 0;
+	unsigned ngroups = 0;
 	persona_get_groups(persona, &ngroups, kinfo.persona_groups, NGROUPS);
 	kinfo.persona_ngroups = ngroups;
 	kinfo.persona_gmuid = persona_get_gmuid(persona);

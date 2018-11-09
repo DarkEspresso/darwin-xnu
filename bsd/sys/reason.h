@@ -42,7 +42,7 @@ __BEGIN_DECLS
 
 typedef struct os_reason {
 	decl_lck_mtx_data(,       	osr_lock)
-	int				osr_refcount;
+	unsigned int			osr_refcount;
 	uint32_t			osr_namespace;
 	uint64_t			osr_code;
 	uint64_t			osr_flags;
@@ -104,11 +104,12 @@ void os_reason_free(os_reason_t cur_reason);
 #define OS_REASON_FOUNDATION    19
 #define OS_REASON_WATCHDOG      20
 #define OS_REASON_METAL         21
+#define OS_REASON_WATCHKIT      22
 
 /*
  * Update whenever new OS_REASON namespaces are added.
  */
-#define OS_REASON_MAX_VALID_NAMESPACE OS_REASON_METAL
+#define OS_REASON_MAX_VALID_NAMESPACE OS_REASON_WATCHKIT
 
 #define OS_REASON_BUFFER_MAX_SIZE 5120
 
@@ -231,6 +232,7 @@ int terminate_with_payload(int pid, uint32_t reason_namespace, uint64_t reason_c
 #define EXEC_EXIT_REASON_FAIRPLAY_DECRYPT   10
 #define EXEC_EXIT_REASON_DECRYPT            11
 #define EXEC_EXIT_REASON_UPX                12
+#define EXEC_EXIT_REASON_NO32EXEC           13
 
 __END_DECLS
 

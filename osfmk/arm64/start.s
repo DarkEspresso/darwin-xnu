@@ -35,6 +35,10 @@
 #include <machine/asm.h>
 #include "assym.s"
 
+#if __ARM_KERNEL_PROTECT__
+#include <arm/pmap.h>
+#endif /* __ARM_KERNEL_PROTECT__ */
+
 
 .macro MSR_VBAR_EL1_X0
 #if defined(KERNEL_INTEGRITY_KTRR)
@@ -179,6 +183,15 @@ Lfound_cpu_data_entry:
 1:
 
 
+
+#if __ARM_KERNEL_PROTECT__ && defined(KERNEL_INTEGRITY_KTRR)
+	/*
+	 * Populate TPIDR_EL1 (in case the CPU takes an exception while
+	 * turning on the MMU).
+	 */
+	ldr		x13, [x21, CPU_ACTIVE_THREAD]
+	msr		TPIDR_EL1, x13
+#endif /* __ARM_KERNEL_PROTECT__ */
 
 	blr		x0
 Lskip_cpu_reset_handler:
@@ -586,6 +599,10 @@ common_start:
 	 */
 #endif
 	and		x0, x25, #(TTBR_BADDR_MASK)
+#if __ARM_KERNEL_PROTECT__
+	/* We start out with a kernel ASID. */
+	orr		x0, x0, #(1 << TTBR_ASID_SHIFT)
+#endif /* __ARM_KERNEL_PROTECT__ */
 	msr		TTBR0_EL1, x0
 #if __ARM64_TWO_LEVEL_PMAP__
 	/*
@@ -656,10 +673,20 @@ common_start:
 1:
 
 	// Set up the exception vectors
+#if __ARM_KERNEL_PROTECT__
+	/* If this is not the first reset of the boot CPU, the alternate mapping
+	 * for the exception vectors will be set up, so use it.  Otherwise, we
+	 * should use the mapping located in the kernelcache mapping.
+	 */
+	MOV64	x0, ARM_KERNEL_PROTECT_EXCEPTION_START
+
+	cbnz		x21, 1f
+#endif /* __ARM_KERNEL_PROTECT__ */
 	adrp	x0, EXT(ExceptionVectorsBase)@page			// Load exception vectors base address
 	add		x0, x0, EXT(ExceptionVectorsBase)@pageoff
 	add		x0, x0, x22									// Convert exception vector address to KVA
 	sub		x0, x0, x23
+1:
 	MSR_VBAR_EL1_X0
 
 
@@ -686,16 +713,25 @@ common_start:
 	mov		x0, #0
 	msr		TPIDR_EL1, x0						// Set thread register
 
+#if defined(APPLE_ARM64_ARCH_FAMILY)
+	// Initialization common to all Apple targets
+	ARM64_IS_PCORE x15
+	ARM64_READ_EP_SPR x15, x12, ARM64_REG_EHID4, ARM64_REG_HID4
+	orr		x12, x12, ARM64_REG_HID4_DisDcMVAOps
+	orr		x12, x12, ARM64_REG_HID4_DisDcSWL2Ops
+	ARM64_WRITE_EP_SPR x15, x12, ARM64_REG_EHID4, ARM64_REG_HID4
+#endif  // APPLE_ARM64_ARCH_FAMILY
+
 #if defined(APPLECYCLONE) || defined(APPLETYPHOON)
 	//
 	// Cyclone/Typhoon-Specific initialization
-	// For tunable summary, see <rdar://problem/13503621> Alcatraz/H6: Confirm Cyclone CPU tunables have been set
+	// For tunable summary, see <rdar://problem/13503621>
 	//
 
 	//
 	// Disable LSP flush with context switch to work around bug in LSP
 	// that can cause Cyclone to wedge when CONTEXTIDR is written.
-	// <rdar://problem/12387704> Innsbruck11A175: panic(cpu 0 caller 0xffffff800024e30c): "wait queue deadlock - wq=0xffffff805a7a63c0, cpu=0\n"
+	// <rdar://problem/12387704>
 	//
 
 	mrs		x12, ARM64_REG_HID0
@@ -713,15 +749,6 @@ common_start:
 	orr		x12, x12, ARM64_REG_HID3_DisXmonSnpEvictTriggerL2StarvationMode
 	msr		ARM64_REG_HID3, x12
 
-	// Do not disable cache ops -- XNU's cache operations already are no-op'ed for Cyclone, but explicit _Force variants are provided
-	// for when we really do need the L2 cache to be cleaned: <rdar://problem/14350417> Innsbruck11A416: Panic logs not preserved on h6
-/*
-	mrs		x12, ARM64_REG_HID4
-	orr		x12, x12, ARM64_REG_HID4_DisDcMVAOps
-	orr		x12, x12, ARM64_REG_HID4_DisDcSWL2Ops
-	msr		ARM64_REG_HID4, x12
-*/
-
 	mrs		x12, ARM64_REG_HID5
 	and		x12, x12, (~ARM64_REG_HID5_DisHwpLd)
 	and		x12, x12, (~ARM64_REG_HID5_DisHwpSt)
@@ -738,20 +765,37 @@ common_start:
 #endif	// APPLECYCLONE || APPLETYPHOON
 
 #if defined(APPLETWISTER)
-	mrs 	x12, ARM64_REG_HID11
-	and 	x12, x12, (~ARM64_REG_HID11_DisFillC1BubOpt)
-	msr 	ARM64_REG_HID11, x12
+
+	// rdar://problem/36112905: Set CYC_CFG:skipInit to pull in isAlive by one DCLK
+	// to work around potential hang.  Must only be applied to Maui C0.
+	mrs		x12, MIDR_EL1
+	ubfx		x13, x12, #MIDR_EL1_PNUM_SHIFT, #12
+	cmp		x13, #4		// Part number 4 => Maui, 5 => Malta/Elba
+	bne		Lskip_isalive
+	ubfx		x13, x12, #MIDR_EL1_VAR_SHIFT, #4
+	cmp		x13, #2		// variant 2 => Maui C0
+	b.lt		Lskip_isalive
+
+	mrs		x12, ARM64_REG_CYC_CFG
+	orr		x12, x12, ARM64_REG_CYC_CFG_skipInit
+	msr		ARM64_REG_CYC_CFG, x12
+
+Lskip_isalive:
+
+	mrs		x12, ARM64_REG_HID11
+	and		x12, x12, (~ARM64_REG_HID11_DisFillC1BubOpt)
+	msr		ARM64_REG_HID11, x12
 
 	// Change the default memcache data set ID from 0 to 15 for all agents
 	mrs		x12, ARM64_REG_HID8
 	orr		x12, x12, (ARM64_REG_HID8_DataSetID0_VALUE | ARM64_REG_HID8_DataSetID1_VALUE)
-	orr 	x12, x12, (ARM64_REG_HID8_DataSetID2_VALUE | ARM64_REG_HID8_DataSetID3_VALUE)
+	orr		x12, x12, (ARM64_REG_HID8_DataSetID2_VALUE | ARM64_REG_HID8_DataSetID3_VALUE)
 	msr		ARM64_REG_HID8, x12
 
 	// Use 4-cycle MUL latency to avoid denormal stalls
-	mrs 	x12, ARM64_REG_HID7
-	orr 	x12, x12, #ARM64_REG_HID7_disNexFastFmul
-	msr 	ARM64_REG_HID7, x12
+	mrs		x12, ARM64_REG_HID7
+	orr		x12, x12, #ARM64_REG_HID7_disNexFastFmul
+	msr		ARM64_REG_HID7, x12
 
 	// disable reporting of TLB-multi-hit-error
 	// <rdar://problem/22163216> 
@@ -787,7 +831,6 @@ common_start:
 #if defined(ARM64_BOARD_CONFIG_T8011)
 	// Clear DisDcZvaCmdOnly 
 	// Per Myst A0/B0 tunables document
-	// https://seg-docs.csg.apple.com/projects/myst//release/UserManual/tunables_a0/ACC.html
 	// <rdar://problem/27627428> Myst: Confirm ACC Per-CPU Tunables
 	mrs		x12, ARM64_REG_HID3
 	and             x12, x12, ~ARM64_REG_HID3_DisDcZvaCmdOnly
@@ -874,6 +917,10 @@ arm_init_tramp:
 	adrp	x0, EXT(invalid_ttep)@page
 	add		x0, x0, EXT(invalid_ttep)@pageoff
 	ldr		x0, [x0]
+#if __ARM_KERNEL_PROTECT__
+	/* We start out with a kernel ASID. */
+	orr		x0, x0, #(1 << TTBR_ASID_SHIFT)
+#endif /* __ARM_KERNEL_PROTECT__ */
 
 	msr		TTBR0_EL1, x0
 

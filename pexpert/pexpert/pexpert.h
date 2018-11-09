@@ -70,6 +70,8 @@ extern struct macos_panic_header *panic_info;
 #endif /* CONFIG_EMBEDDED */
 #endif /* XNU_KERNEL_PRIVATE */
 
+extern void lpss_uart_enable (boolean_t on_off);
+
 void PE_enter_debugger(
 	const char *cause);
 
@@ -390,8 +392,21 @@ extern void PE_arm_debug_enable_trace(void);
 #endif
 
 #if KERNEL_PRIVATE
+#if defined(__arm64__)
+extern uint8_t PE_smc_stashed_x86_power_state;
+extern uint8_t PE_smc_stashed_x86_efi_boot_state;
+extern uint8_t PE_smc_stashed_x86_system_state;
+extern uint32_t PE_pcie_stashed_link_state;
+#endif
+
 boolean_t PE_reboot_on_panic(void);
 void PE_sync_panic_buffers(void);
+
+typedef struct PE_panic_save_context {
+	void *psc_buffer;
+	uint32_t psc_offset;
+	uint32_t psc_length;
+} PE_panic_save_context_t;
 #endif
 
 __END_DECLS

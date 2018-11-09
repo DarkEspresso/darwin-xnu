@@ -1338,6 +1338,10 @@ class Tests: XCTestCase {
         self.testSampleStackshot("stackshot-sample-thread-groups")
     }
 
+    func testSampleThreadGroupsFlags() {
+        self.testSampleStackshot("stackshot-sample-thread-groups-flags")
+    }
+
     func testSampleCoalitions() {
         self.testSampleStackshot("stackshot-sample-coalitions")
     }
@@ -1364,6 +1368,10 @@ class Tests: XCTestCase {
 
     func testStackshotWithThreadPolicy() {
         self.testSampleStackshot("stackshot-sample-thread-policy")
+    }
+
+    func testDeltaStackshotWithThreadPolicy() {
+        self.testSampleStackshot("stackshot-sample-delta-thread-policy")
     }
 
     func testStackshotWithInstrsCycles() {

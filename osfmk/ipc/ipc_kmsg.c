@@ -720,7 +720,7 @@ void ipc_kmsg_trace_send(ipc_kmsg_t kmsg,
 	case IKOT_MASTER_DEVICE:
 	case IKOT_IOKIT_CONNECT:
 	case IKOT_IOKIT_OBJECT:
-	case IKOT_IOKIT_SPARE:
+	case IKOT_IOKIT_IDENT:
 		msg_flags |= KMSG_TRACE_FLAG_IOKIT;
 		break;
 	default:
@@ -1160,6 +1160,12 @@ ipc_kmsg_rmqueue(
 
 		queue->ikmq_base = IKM_NULL;
 	} else {
+		if (__improbable(next->ikm_prev != kmsg || prev->ikm_next != kmsg)) {
+			panic("ipc_kmsg_rmqueue: inconsistent prev/next pointers. "
+				"(prev->next: %p, next->prev: %p, kmsg: %p)",
+				prev->ikm_next, next->ikm_prev, kmsg);
+		}
+
 		if (queue->ikmq_base == kmsg)
 			queue->ikmq_base = next;
 

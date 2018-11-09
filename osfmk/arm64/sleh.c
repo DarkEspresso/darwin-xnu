@@ -154,8 +154,6 @@ unix_syscall(struct arm_saved_state * regs, thread_t thread_act,
 extern void
 mach_syscall(struct arm_saved_state*);
 
-volatile perfCallback    perfTrapHook = NULL;	/* Pointer to CHUD trap hook routine */
-
 #if CONFIG_DTRACE
 extern kern_return_t dtrace_user_probe(arm_saved_state_t* regs);
 extern boolean_t dtrace_tally_fault(user_addr_t);
@@ -179,7 +177,6 @@ extern boolean_t pgtrace_enabled;
 #endif
 
 #if __ARM_PAN_AVAILABLE__
-extern boolean_t arm_pan_enabled;
 #endif
 
 #if defined(APPLECYCLONE)
@@ -499,7 +496,7 @@ sleh_synchronous(arm_context_t *context, uint32_t esr, vm_offset_t far)
 		break;
 
 	case ESR_EC_BKPT_REG_MATCH_EL1:
-		if (FSC_DEBUG_FAULT == ISS_SSDE_FSC(esr)) {
+		if (!PE_i_can_has_debugger(NULL) && FSC_DEBUG_FAULT == ISS_SSDE_FSC(esr)) {
 			kprintf("Hardware Breakpoint Debug exception from kernel.  Hanging here (by design).\n");
 			for (;;);
 
@@ -524,7 +521,7 @@ sleh_synchronous(arm_context_t *context, uint32_t esr, vm_offset_t far)
 		break;
 
 	case ESR_EC_SW_STEP_DEBUG_EL1:
-		if (FSC_DEBUG_FAULT == ISS_SSDE_FSC(esr)) {
+		if (!PE_i_can_has_debugger(NULL) && FSC_DEBUG_FAULT == ISS_SSDE_FSC(esr)) {
 			kprintf("Software Step Debug exception from kernel.  Hanging here (by design).\n");
 			for (;;);
 
@@ -943,7 +940,7 @@ handle_user_abort(arm_saved_state_t *state, uint32_t esr, vm_offset_t fault_addr
 	thread->iotier_override = THROTTLE_LEVEL_NONE; /* Reset IO tier override before handling abort from userspace */
 
 	if (is_vm_fault(fault_code)) {
-		kern_return_t	result;
+		kern_return_t	result = KERN_FAILURE;
 		vm_map_t		map = thread->map;
 		vm_offset_t		vm_fault_addr = fault_addr;
 
@@ -983,7 +980,10 @@ handle_user_abort(arm_saved_state_t *state, uint32_t esr, vm_offset_t fault_addr
 #endif
 
 		/* check to see if it is just a pmap ref/modify fault */
-		result = arm_fast_fault(map->pmap, trunc_page(vm_fault_addr), fault_type, TRUE);
+
+		if (result != KERN_SUCCESS) {
+			result = arm_fast_fault(map->pmap, trunc_page(vm_fault_addr), fault_type, TRUE);
+		}
 		if (result != KERN_SUCCESS) {
 
 			{
@@ -1086,6 +1086,13 @@ handle_kernel_abort(arm_saved_state_t *state, uint32_t esr, vm_offset_t fault_ad
 		vm_map_t		map;
 		int 			interruptible;
 
+		/*
+		 * Ensure no faults in the physical aperture. This could happen if
+		 * a page table is incorrectly allocated from the read only region
+		 * when running with KTRR.
+		 */
+
+
 		if (fault_addr >= gVirtBase && fault_addr < (gVirtBase+gPhysSize)) {
 			panic_with_thread_kernel_state("Unexpected fault in kernel static region\n",state);
 		}
@@ -1139,8 +1146,8 @@ handle_kernel_abort(arm_saved_state_t *state, uint32_t esr, vm_offset_t fault_ad
 #endif
 
 #if CONFIG_PGTRACE
-    } else if (ml_at_interrupt_context()) {
-        panic_with_thread_kernel_state("Unexpected abort while on interrupt stack.", state);
+	} else if (ml_at_interrupt_context()) {
+		panic_with_thread_kernel_state("Unexpected abort while on interrupt stack.", state);
 #endif
 	} else if (is_alignment_fault(fault_code)) {
 		panic_with_thread_kernel_state("Unaligned kernel data abort.", state);

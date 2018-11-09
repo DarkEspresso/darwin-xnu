@@ -76,6 +76,7 @@ extern	reset_handler_data_t	ResetHandlerData;
 #define	CPUWINDOWS_BASE_MASK		0xFFFFFFFFFFF00000UL
 #define	CPUWINDOWS_BASE			(VM_MAX_KERNEL_ADDRESS & CPUWINDOWS_BASE_MASK)
 #endif
+#define CPUWINDOWS_TOP			(CPUWINDOWS_BASE + (MAX_CPUS * CPUWINDOWS_MAX * PAGE_SIZE))
 
 typedef struct cpu_data_entry {
 	void					*cpu_data_paddr;             /* Cpu data physical address */
@@ -182,15 +183,14 @@ typedef struct cpu_data
 	void					*cpu_tbd_hardware_val;
 
 	void					*cpu_console_buf;
-	void					*cpu_chud;
 
 	void					*cpu_idle_notify;
 	uint64_t				cpu_idle_latency;
 	uint64_t				cpu_idle_pop;
 
-#if	__arm__
+#if	__arm__ || __ARM_KERNEL_PROTECT__
 	vm_offset_t				cpu_exc_vectors;
-#endif
+#endif /* __ARM_KERNEL_PROTECT__ */
 	vm_offset_t				cpu_reset_handler;
 	uint32_t				cpu_reset_type;
 	uintptr_t				cpu_reset_assist;
