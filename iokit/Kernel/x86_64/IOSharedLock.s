@@ -58,3 +58,22 @@ LEAF(_ev_try_lock, 0)
 	setz		%dl
 	movzbl		%dl, %eax
 END(_OSSpinLockTry)
+
+/*
+ * void
+ * OSSpinLockLock(p)
+ *	int *p;
+ *
+ * Lock the lock pointed to by p.
+ */
+
+LEAF(_OSSpinLockLock, 0)
+	xorl		%eax, %eax
+	orl		$-1, %edx
+	lock
+	cmpxchgl	%edx, (%rdi)
+	setz		%dl
+	movzbl		%dl, %eax
+	cmp		%eax, 0
+	je _OSSpinLockLock
+END(_OSSpinLockLock)

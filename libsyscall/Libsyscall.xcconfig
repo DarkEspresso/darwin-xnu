@@ -1,5 +1,14 @@
-#include "<DEVELOPER_DIR>/Makefiles/CoreOS/Xcode/BSD.xcconfig"
-
+// <BSD.xcconfig>
+ARCHS = $(ARCHS_STANDARD);
+CODE_SIGN_IDENTITY = -;
+CURRENT_PROJECT_VERSION = $(RC_ProjectSourceVersion);
+DEAD_CODE_STRIPPING = YES;
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym;
+PREBINDING = NO;
+SDKROOT = macosx;
+VERSION_INFO_PREFIX = __;
+VERSIONING_SYSTEM = apple-generic;
+// </BSD.xcconfig>
 BUILD_VARIANTS = normal
 SUPPORTED_PLATFORMS = macosx iphoneos iphoneosnano tvos appletvos watchos bridgeos
 ONLY_ACTIVE_ARCH = NO

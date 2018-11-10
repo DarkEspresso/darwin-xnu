@@ -139,10 +139,6 @@
 		978228281B8678DC008385AC /* pselect-darwinext.c in Sources */ = {isa = PBXBuildFile; fileRef = 978228271B8678CB008385AC /* pselect-darwinext.c */; };
 		978228291B8678DF008385AC /* pselect-darwinext-cancel.c in Sources */ = {isa = PBXBuildFile; fileRef = 978228261B8678C2008385AC /* pselect-darwinext-cancel.c */; };
 		9CCF28271E68E993002EE6CD /* pid_shutdown_networking.c in Sources */ = {isa = PBXBuildFile; fileRef = 9CCF28261E68E993002EE6CD /* pid_shutdown_networking.c */; };
-		A50845861DDA69AC0041C0E0 /* thread_self_restrict.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = A50BD52E1DDA548F006622C8 /* thread_self_restrict.h */; };
-		A50845871DDA69C90041C0E0 /* thread_self_restrict.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = A50BD52E1DDA548F006622C8 /* thread_self_restrict.h */; };
-		A50BD52F1DDA548F006622C8 /* thread_self_restrict.h in Headers */ = {isa = PBXBuildFile; fileRef = A50BD52E1DDA548F006622C8 /* thread_self_restrict.h */; };
-		A50BD5301DDA5500006622C8 /* thread_self_restrict.h in Headers */ = {isa = PBXBuildFile; fileRef = A50BD52E1DDA548F006622C8 /* thread_self_restrict.h */; };
 		A59CB95616669EFB00B064B3 /* stack_logging_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = A59CB95516669DB700B064B3 /* stack_logging_internal.h */; };
 		A59CB9581666A1A200B064B3 /* munmap.c in Sources */ = {isa = PBXBuildFile; fileRef = A59CB9571666A1A200B064B3 /* munmap.c */; };
 		BA0D9FB1199031AD007E8A73 /* kdebug_trace.c in Sources */ = {isa = PBXBuildFile; fileRef = BA0D9FB0199031AD007E8A73 /* kdebug_trace.c */; };
@@ -389,7 +385,6 @@
 			dstPath = "$(OS_PRIVATE_HEADERS_FOLDER_PATH)";
 			dstSubfolderSpec = 0;
 			files = (
-				A50845871DDA69C90041C0E0 /* thread_self_restrict.h in CopyFiles */,
 				C9FD8508166D6BD400963B73 /* tsd.h in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 1;
@@ -400,7 +395,6 @@
 			dstPath = "$(OS_PRIVATE_HEADERS_FOLDER_PATH)";
 			dstSubfolderSpec = 0;
 			files = (
-				A50845861DDA69AC0041C0E0 /* thread_self_restrict.h in CopyFiles */,
 				C9A3D6EB1672AD1000A5CAA3 /* tsd.h in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 1;
@@ -522,7 +516,6 @@
 		978228261B8678C2008385AC /* pselect-darwinext-cancel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "pselect-darwinext-cancel.c"; sourceTree = "<group>"; };
 		978228271B8678CB008385AC /* pselect-darwinext.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "pselect-darwinext.c"; sourceTree = "<group>"; };
 		9CCF28261E68E993002EE6CD /* pid_shutdown_networking.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = pid_shutdown_networking.c; sourceTree = "<group>"; };
-		A50BD52E1DDA548F006622C8 /* thread_self_restrict.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = thread_self_restrict.h; sourceTree = "<group>"; };
 		A59CB95516669DB700B064B3 /* stack_logging_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stack_logging_internal.h; sourceTree = "<group>"; };
 		A59CB9571666A1A200B064B3 /* munmap.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = munmap.c; sourceTree = "<group>"; };
 		BA0D9FB0199031AD007E8A73 /* kdebug_trace.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = kdebug_trace.c; sourceTree = "<group>"; };
@@ -993,7 +986,6 @@
 			children = (
 				C9C1824F15338C0B00933F23 /* alloc_once.c */,
 				C9EE57F51669673D00337E4B /* tsd.h */,
-				A50BD52E1DDA548F006622C8 /* thread_self_restrict.h */,
 			);
 			path = os;
 			sourceTree = "<group>";
@@ -1083,7 +1075,6 @@
 				C6D3EFBC16542C510052CF30 /* mach_interface.h in Headers */,
 				C6D3EFBD16542C510052CF30 /* port_obj.h in Headers */,
 				C6D3EFBE16542C510052CF30 /* sync.h in Headers */,
-				A50BD52F1DDA548F006622C8 /* thread_self_restrict.h in Headers */,
 				C6D3EFC116542C510052CF30 /* vm_task.h in Headers */,
 				C6D3EFC216542C510052CF30 /* key_defs.h in Headers */,
 				C6D3EFC316542C510052CF30 /* ls_defs.h in Headers */,
@@ -1118,7 +1109,6 @@
 				C9D9BD29114B00600000D8B9 /* mach_interface.h in Headers */,
 				C9D9BD2B114B00600000D8B9 /* port_obj.h in Headers */,
 				C9D9BD2C114B00600000D8B9 /* sync.h in Headers */,
-				A50BD5301DDA5500006622C8 /* thread_self_restrict.h in Headers */,
 				C9D9BD2F114B00600000D8B9 /* vm_task.h in Headers */,
 				C9D9BD50114B00600000D8B9 /* key_defs.h in Headers */,
 				C9D9BD51114B00600000D8B9 /* ls_defs.h in Headers */,
@@ -1507,7 +1497,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = C9D9BE0F114FFADC0000D8B9 /* Libsyscall.xcconfig */;
 			buildSettings = {
-				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
+				ARCHS = "$(ARCHS_STANDARD)";
 				COPY_PHASE_STRIP = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				MAP_PLATFORM = "$(MAP_PLATFORM_$(PLATFORM_NAME))";

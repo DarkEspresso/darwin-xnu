@@ -370,6 +370,7 @@ ipsec_interface_isvalid (ifnet_t interface)
     return 1;
 }
 
+#if IPSEC_NEXUS
 boolean_t
 ipsec_interface_needs_netagent(ifnet_t interface)
 {
@@ -387,6 +388,7 @@ ipsec_interface_needs_netagent(ifnet_t interface)
 
 	return (pcb->ipsec_needs_netagent == true);
 }
+#endif
 
 static errno_t
 ipsec_ifnet_set_attrs(ifnet_t ifp)
