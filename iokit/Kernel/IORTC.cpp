@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2007 Apple Inc. All rights reserved.
+ * Copyright (c) 2017 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
@@ -26,43 +26,43 @@
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 
-#include <mach/vm_param.h>
-#include <chud/chud_xnu.h>
-#include <machine/machine_routines.h>
+#include <IOKit/rtc/IORTCController.h>
 
-extern unsigned int IODefaultCacheBits(addr64_t pa);
-extern unsigned int vm_page_free_count;
-extern unsigned int vm_page_inactive_count;
+#define super IOService
 
-__private_extern__ uint64_t 
-chudxnu_avail_memory_size(void)
+OSDefineMetaClassAndAbstractStructors(IORTC, IOService);
+
+void IORTC::getUTCTimeOfDay( clock_sec_t * secs, clock_nsec_t * nsecs )
 {
-    return max_mem;
+    *nsecs = 0;
+    *secs = getGMTTimeOfDay();
 }
 
-__private_extern__ uint64_t 
-chudxnu_phys_memory_size(void)
+void IORTC::setUTCTimeOfDay( clock_sec_t secs, clock_nsec_t nsecs )
 {
-    return mem_actual;
+    setGMTTimeOfDay(secs);
 }
 
-/* 
- * This function is not intended to be valid for any amount of time,
- * it is just an instantaneous snapshot of the current free memory size.
- */
-__private_extern__
-uint64_t chudxnu_free_memory_size(void)
+IOReturn IORTC::getMonotonicClockOffset( int64_t * usecs )
 {
-    return (uint64_t)vm_page_free_count * (uint64_t)page_size;
+    return kIOReturnUnsupported;
 }
 
-/*
- * This function is not intended to be valid for any amount of time,
- * it is just an instantaneous snapshot of the current inactive memory size.
- */
-__private_extern__
-uint64_t chudxnu_inactive_memory_size(void)
+IOReturn IORTC::setMonotonicClockOffset( int64_t usecs )
 {
-	return (uint64_t)vm_page_inactive_count * (uint64_t)page_size;
+    return kIOReturnUnsupported;
 }
 
+IOReturn IORTC::getMonotonicClockAndTimestamp( uint64_t * usecs, uint64_t *mach_absolute_time )
+{
+    return kIOReturnUnsupported;
+}
+
+OSMetaClassDefineReservedUnused(IORTC, 0);
+OSMetaClassDefineReservedUnused(IORTC, 1);
+OSMetaClassDefineReservedUnused(IORTC, 2);
+OSMetaClassDefineReservedUnused(IORTC, 3);
+OSMetaClassDefineReservedUnused(IORTC, 4);
+OSMetaClassDefineReservedUnused(IORTC, 5);
+OSMetaClassDefineReservedUnused(IORTC, 6);
+OSMetaClassDefineReservedUnused(IORTC, 7);
