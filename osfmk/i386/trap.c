@@ -739,6 +739,23 @@ FALL_THROUGH:
 		}
 
 		/*
+		 * If the protection is caused by an invalid rdmsr/wrmsr instruction,
+		 * resume the execution. Kudos to sinetek (https://github.com/sinetek).
+		 * TODO: should we log the event?
+		 */ 
+		if (vm_map_check_protection(kernel_map, kern_ip, kern_ip + 2, VM_PROT_READ)) {
+			uint16_t opcode = *(uint16_t *) kern_ip;
+			if (opcode == 0x320f /* rdmsr */) {
+				saved_state->rdx = 0;
+				saved_state->rax = 0;
+				set_recovery_ip(saved_state, kern_ip + 2);
+				return;
+			} else if (opcode == 0x300f) {
+				set_recovery_ip(saved_state, kern_ip + 2);
+				return;
+			}
+		}
+		/*
 		 * Check thread recovery address also.
 		 */
 		if (thread != THREAD_NULL && thread->recover) {

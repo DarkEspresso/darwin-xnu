@@ -338,7 +338,9 @@ commpage_init_cpu_capabilities( void )
 	}
 
 #endif /* not RC_HIDE_XNU_J137 */
-	uint64_t misc_enable = rdmsr64(MSR_IA32_MISC_ENABLE);
+	uint64_t misc_enable = 
+		!memcmp(cpuid_info()->cpuid_vendor, CPUID_VID_INTEL, 12) &&
+				rdmsr64(MSR_IA32_MISC_ENABLE);
 	setif(bits, kHasENFSTRG, (misc_enable & 1ULL) &&
 				 (cpuid_leaf7_features() &
 					CPUID_LEAF7_FEATURE_ERMS));
