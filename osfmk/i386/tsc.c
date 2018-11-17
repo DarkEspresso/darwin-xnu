@@ -196,6 +196,22 @@ tsc_init(void)
 
 		break;
 	    }
+	case CPUFAMILY_AMD_ZEN: {
+		uint64_t p0state_def;
+		uint64_t fid;
+		uint64_t did;
+		
+		/*
+		 * On Zen architecture, TSC is incremented at P0 state's current operating
+		 * frequency, given by CpuFid / CpuDid * 200 (Mhz).
+		 */
+		p0state_def = rdmsr64(MSR_ZEN_P0STATE_DEF);
+		fid = bitfield(p0state_def, 7, 0);
+		did = bitfield(p0state_def, 13, 8);
+		tscFreq = fid / did * 200 * Mega;
+		busFreq = 100 * Mega;
+		break;
+		}
 	default: {
 		uint64_t msr_flex_ratio;
 		uint64_t msr_platform_info;

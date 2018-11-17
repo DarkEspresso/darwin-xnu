@@ -760,62 +760,64 @@ cpuid_set_cpufamily(i386_cpu_info_t *info_p)
 {
 	uint32_t cpufamily = CPUFAMILY_UNKNOWN;
 
-	if (!memcmp(info_p->cpuid_vendor, CPUID_VID_INTEL, 12)) {
-		switch (info_p->cpuid_family) {
-		case 6:
-			switch (info_p->cpuid_model) {
-			case 23:
-				cpufamily = CPUFAMILY_INTEL_PENRYN;
-				break;
-			case CPUID_MODEL_NEHALEM:
-			case CPUID_MODEL_FIELDS:
-			case CPUID_MODEL_DALES:
-			case CPUID_MODEL_NEHALEM_EX:
-				cpufamily = CPUFAMILY_INTEL_NEHALEM;
-				break;
-			case CPUID_MODEL_DALES_32NM:
-			case CPUID_MODEL_WESTMERE:
-			case CPUID_MODEL_WESTMERE_EX:
-				cpufamily = CPUFAMILY_INTEL_WESTMERE;
-				break;
-			case CPUID_MODEL_SANDYBRIDGE:
-			case CPUID_MODEL_JAKETOWN:
-				cpufamily = CPUFAMILY_INTEL_SANDYBRIDGE;
-				break;
-			case CPUID_MODEL_IVYBRIDGE:
-			case CPUID_MODEL_IVYBRIDGE_EP:
-				cpufamily = CPUFAMILY_INTEL_IVYBRIDGE;
-				break;
-			case CPUID_MODEL_HASWELL:
-			case CPUID_MODEL_HASWELL_EP:
-			case CPUID_MODEL_HASWELL_ULT:
-			case CPUID_MODEL_CRYSTALWELL:
-				cpufamily = CPUFAMILY_INTEL_HASWELL;
-				break;
-			case CPUID_MODEL_BROADWELL:
-			case CPUID_MODEL_BRYSTALWELL:
-				cpufamily = CPUFAMILY_INTEL_BROADWELL;
-				break;
-			case CPUID_MODEL_SKYLAKE:
-			case CPUID_MODEL_SKYLAKE_DT:
-#if !defined(RC_HIDE_XNU_J137)
-			case CPUID_MODEL_SKYLAKE_W:
-#endif
-				cpufamily = CPUFAMILY_INTEL_SKYLAKE;
-				break;
-			case CPUID_MODEL_KABYLAKE:
-			case CPUID_MODEL_KABYLAKE_DT:
-				cpufamily = CPUFAMILY_INTEL_KABYLAKE;
-				break;
-			}
-			break;
-		}
-	} else if (!memcmp(info_p->cpuid_vendor, CPUID_VID_AMD, 12)) {
+	if (!memcmp(info_p->cpuid_vendor, CPUID_VID_AMD, 12)) {
 		if (info_p->cpuid_family == 0x17) {
 			cpufamily = CPUFAMILY_AMD_ZEN;
 		}
+		goto set_cpu_family;
 	}
 
+	switch (info_p->cpuid_family) {
+	case 6:
+		switch (info_p->cpuid_model) {
+		case 23:
+			cpufamily = CPUFAMILY_INTEL_PENRYN;
+			break;
+		case CPUID_MODEL_NEHALEM:
+		case CPUID_MODEL_FIELDS:
+		case CPUID_MODEL_DALES:
+		case CPUID_MODEL_NEHALEM_EX:
+			cpufamily = CPUFAMILY_INTEL_NEHALEM;
+			break;
+		case CPUID_MODEL_DALES_32NM:
+		case CPUID_MODEL_WESTMERE:
+		case CPUID_MODEL_WESTMERE_EX:
+			cpufamily = CPUFAMILY_INTEL_WESTMERE;
+			break;
+		case CPUID_MODEL_SANDYBRIDGE:
+		case CPUID_MODEL_JAKETOWN:
+			cpufamily = CPUFAMILY_INTEL_SANDYBRIDGE;
+			break;
+		case CPUID_MODEL_IVYBRIDGE:
+		case CPUID_MODEL_IVYBRIDGE_EP:
+			cpufamily = CPUFAMILY_INTEL_IVYBRIDGE;
+			break;
+		case CPUID_MODEL_HASWELL:
+		case CPUID_MODEL_HASWELL_EP:
+		case CPUID_MODEL_HASWELL_ULT:
+		case CPUID_MODEL_CRYSTALWELL:
+			cpufamily = CPUFAMILY_INTEL_HASWELL;
+			break;
+		case CPUID_MODEL_BROADWELL:
+		case CPUID_MODEL_BRYSTALWELL:
+			cpufamily = CPUFAMILY_INTEL_BROADWELL;
+			break;
+		case CPUID_MODEL_SKYLAKE:
+		case CPUID_MODEL_SKYLAKE_DT:
+#if !defined(RC_HIDE_XNU_J137)
+		case CPUID_MODEL_SKYLAKE_W:
+#endif
+			cpufamily = CPUFAMILY_INTEL_SKYLAKE;
+			break;
+		case CPUID_MODEL_KABYLAKE:
+		case CPUID_MODEL_KABYLAKE_DT:
+			cpufamily = CPUFAMILY_INTEL_KABYLAKE;
+			break;
+		}
+		break;
+	}
+
+set_cpu_family:
 	info_p->cpuid_cpufamily = cpufamily;
 	DBG("cpuid_set_cpufamily(%p) returning 0x%x\n", info_p, cpufamily);
 	return cpufamily;
