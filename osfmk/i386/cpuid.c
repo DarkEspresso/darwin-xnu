@@ -479,6 +479,142 @@ cpuid_set_cache_info( i386_cpu_info_t * info_p )
 }
 
 static void
+cpuid_set_cache_info_amd( i386_cpu_info_t * info_p )
+{
+	uint32_t	cpuid_result[4];
+	uint32_t	reg[4];
+	uint32_t	linesizes[LCACHE_MAX];
+	uint32_t	index;
+	boolean_t	cpuid_deterministic_supported = FALSE;
+
+	DBG("cpuid_set_cache_info_amd(%p)\n", info_p);
+
+	bzero( linesizes, sizeof(linesizes) );
+
+	/*
+	 * Cores per package: threads per package / threads per core.
+	 * The first value can be read from the "Size identifier" (value of
+	 * ecx when CPUID is invoked with 0x80000008 in eax), the second is
+	 * found in the node identifier (value in ebx when CPUID is invoked
+	 * and eax is 0x8000001E).
+	 */
+	cpuid_fn(0x80000008, reg);
+	info_p->cpuid_logical_per_package = bitfield32(reg[ecx], 7, 0) + 1;
+	cpuid_fn(0x8000001E, reg);
+	info_p->cpuid_cores_per_package
+		= info_p->cpuid_logical_per_package / (bitfield32(reg[ebx], 15, 8) + 1);
+
+	/*
+	 * The cache properties on Ryzen are obtained via cpuid_fn 0x8000001D.
+	 */
+	cpuid_fn(0, cpuid_result);
+	if (cpuid_result[eax] >= 0x8000001D)
+		cpuid_deterministic_supported = TRUE;
+
+	for (index = 0; cpuid_deterministic_supported; index++) {
+		cache_type_t	type = Lnone;
+		uint32_t	cache_type;
+		uint32_t	cache_level;
+		uint32_t	cache_sharing;
+		uint32_t	cache_linesize;
+		uint32_t	cache_sets;
+		uint32_t	cache_associativity;
+		uint32_t	cache_size;
+		uint32_t	cache_partitions;
+		uint32_t	colors;
+
+		reg[eax] = 0x8000001D;
+		reg[ecx] = index;
+		cpuid(reg);
+		DBG("cpuid(0x8000001D) index=%d eax=0x%x\n", index, reg[eax]);
+		cache_type = bitfield32(reg[eax], 4, 0);
+		if (cache_type == 0)
+			break;
+		cache_level			= bitfield32(reg[eax], 7, 5);
+		cache_sharing		= bitfield32(reg[eax], 25, 14) + 1;
+		cache_linesize		= bitfield32(reg[ebx], 11, 0) + 1;
+		cache_partitions	= bitfield32(reg[ebx], 21, 12) + 1;
+		cache_associativity	= bitfield32(reg[ebx], 31, 22) + 1;
+		cache_sets 			= bitfield32(reg[ecx], 31, 0) + 1;
+
+		/* Map type/levels returned by CPUID into cache_type_t */
+		switch (cache_level) {
+		case 1:
+			type = cache_type == 1 ? L1D :
+			       cache_type == 2 ? L1I :
+						 Lnone;
+			break;
+		case 2:
+			type = cache_type == 3 ? L2U :
+						 Lnone;
+			break;
+		case 3:
+			type = cache_type == 3 ? L3U :
+						 Lnone;
+			break;
+		default:
+			type = Lnone;
+		}
+
+		/* The total size of a cache is:
+		 *	( linesize * sets * associativity * partitions )
+		 */
+		if (type != Lnone) {
+			cache_size = cache_linesize * cache_sets *
+				     cache_associativity * cache_partitions;
+			info_p->cache_size[type] = cache_size;
+			info_p->cache_sharing[type] = cache_sharing;
+			info_p->cache_partitions[type] = cache_partitions;
+			linesizes[type] = cache_linesize;
+
+			DBG(" cache_size[%s]      : %d\n",
+			    cache_type_str[type], cache_size);
+			DBG(" cache_sharing[%s]   : %d\n",
+			    cache_type_str[type], cache_sharing);
+			DBG(" cache_partitions[%s]: %d\n",
+			    cache_type_str[type], cache_partitions);
+
+			if (type == L2U)
+				info_p->cpuid_cache_L2_associativity = cache_associativity;
+
+   			/* See note in cpuid_set_cache_info. */
+			colors = ( cache_linesize * cache_sets ) >> 12;
+			 
+			if ( colors > vm_cache_geometry_colors )
+				vm_cache_geometry_colors = colors;
+		}
+	}
+	DBG(" vm_cache_geometry_colors: %d\n", vm_cache_geometry_colors);
+
+	/*
+	 * Deterministic cache parameters are always available on Zen.
+	 */
+	if ( linesizes[L2U] )
+		info_p->cache_linesize = linesizes[L2U];
+	else if ( linesizes[L1D] )
+		info_p->cache_linesize = linesizes[L1D];
+	else panic("no linesize");
+	DBG(" cache_linesize	: %d\n", info_p->cache_linesize);
+
+	/*
+	 * TLB info for L1 and L2 is obtained with CPUID Fns 0x80000005
+	 * and 0x80000006, respectively.
+	 */
+	cpuid_fn(0x80000005, reg);
+	info_p->cpuid_tlb[TLB_INST][TLB_SMALL][0] = bitfield32(reg[ebx], 7, 0);
+	info_p->cpuid_tlb[TLB_INST][TLB_LARGE][0] = bitfield32(reg[eax], 7, 0);
+	info_p->cpuid_tlb[TLB_DATA][TLB_SMALL][0] = bitfield32(reg[ebx], 23, 16);
+	info_p->cpuid_tlb[TLB_DATA][TLB_LARGE][0] = bitfield32(reg[eax], 23, 16);
+
+	cpuid_fn(0x8000006, reg);
+	info_p->cpuid_tlb[TLB_INST][TLB_SMALL][1] = bitfield32(reg[ebx], 11, 0);
+	info_p->cpuid_tlb[TLB_INST][TLB_LARGE][1] = bitfield32(reg[eax], 11, 0);
+	info_p->cpuid_tlb[TLB_DATA][TLB_SMALL][1] = bitfield32(reg[ebx], 27, 16);
+	info_p->cpuid_tlb[TLB_DATA][TLB_LARGE][1] = bitfield32(reg[eax], 27, 16);
+	DBG("\n");
+}
+
+static void
 cpuid_set_generic_info(i386_cpu_info_t *info_p)
 {
 	uint32_t	reg[4];
@@ -837,6 +973,9 @@ cpuid_set_info(void)
 	/* verify we are running on a supported CPU */
 	if ((strncmp(CPUID_VID_INTEL, info_p->cpuid_vendor,
 		     min(strlen(CPUID_STRING_UNKNOWN) + 1,
+			 sizeof(info_p->cpuid_vendor))) ||
+		 strncmp(CPUID_VID_AMD, info_p->cpuid_vendor,
+		     min(strlen(CPUID_STRING_UNKNOWN) + 1,
 			 sizeof(info_p->cpuid_vendor)))) ||
 	   (cpuid_set_cpufamily(info_p) == CPUFAMILY_UNKNOWN))
 		panic("Unsupported CPU");
@@ -863,6 +1002,8 @@ cpuid_set_info(void)
 
 	if (info_p->cpuid_cpufamily == CPUFAMILY_INTEL_PENRYN)
 		cpuid_set_cache_info(info_p);
+	else if (info_p->cpuid_cpufamily == CPUFAMILY_AMD_ZEN)
+		cpuid_set_cache_info_amd(info_p);
 
 	/*
 	 * Find the number of enabled cores and threads
@@ -870,6 +1011,7 @@ cpuid_set_info(void)
 	 */
 	switch (info_p->cpuid_cpufamily) {
 	case CPUFAMILY_INTEL_PENRYN:
+	case CPUFAMILY_AMD_ZEN:
 		info_p->core_count   = info_p->cpuid_cores_per_package;
 		info_p->thread_count = info_p->cpuid_logical_per_package;
 		break;
@@ -894,7 +1036,8 @@ cpuid_set_info(void)
 		info_p->thread_count = info_p->cpuid_logical_per_package;
 	}
 
-	if (info_p->cpuid_cpufamily != CPUFAMILY_INTEL_PENRYN)
+	if (info_p->cpuid_cpufamily != CPUFAMILY_INTEL_PENRYN &&
+		info_p->cpuid_cpufamily != CPUFAMILY_AMD_ZEN)
 		cpuid_set_cache_info(info_p);
 
 	DBG("cpuid_set_info():\n");
